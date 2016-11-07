@@ -1,0 +1,20 @@
+#!/bin/sh
+
+echo "postinst="$1
+
+chown root.root /lib/udev/rules.d/asi.rules
+chmod 644 /lib/udev/rules.d/asi.rules
+
+chown root.root /usr/include/ASICamera*
+chmod 644 /usr/include/ASICamera*
+
+chown root.root /usr/lib/libASICamera*
+chmod 777 /usr/lib/libASICamera*
+
+cd /usr/lib ; ln -s libASICamera2.so.0.4.0929 libASICamera2.so
+cd /usr/lib ; ln -s libASICamera.so.0.4.0929 libASICamera.so
+chown root.root /usr/lib/libASICamera*.so
+
+/sbin/ldconfig
+
+exit 0

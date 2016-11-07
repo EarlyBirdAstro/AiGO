@@ -1,0 +1,10 @@
+#!/bin/sh
+
+echo "postrm="$1
+
+rm -f /usr/lib/libASICamera2.so
+rm -f /usr/lib/libASICamera.so
+
+/sbin/ldconfig
+
+exit 0
