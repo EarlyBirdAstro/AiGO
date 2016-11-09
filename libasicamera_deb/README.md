@@ -53,7 +53,7 @@ ant deb
 ```
 
 # 上傳 libasicamera 的 deb 套件包, 至 Repository Server
-TODO: targer: up 加入 build.xml 或是 WEB Upload
+TODO: tagert: up 加入 build.xml 或是 WEB Upload
 ```
 scp dist/libasicamera_0.4.0929-1_armhf.deb to Repository Sserver
 ```
