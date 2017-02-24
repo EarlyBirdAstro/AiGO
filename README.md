@@ -3,7 +3,7 @@ AiGO is Ai = 人工智慧 / 我, G = Guider , O = Observatory
 
 ## Support device
 
-* Raspberry Pi 3 + BCM43438 (built-in Wi-Fi as AP)
+* Raspberry Pi 3 Model B + BCM43438 (built-in Wi-Fi as AP)
 
 ## Require
 
