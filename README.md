@@ -1,5 +1,5 @@
 # AiGO
-AiGO is Ai = 人工智慧 / 我, G = Guider , O = Observatory
+AiGO is Ai = 人工智慧, G = Guider , O = Observatory
 
 ## Support device
 
