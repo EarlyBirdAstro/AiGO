@@ -1,0 +1,75 @@
+#!/bin/sh
+
+type=$1
+echo "postinst="$type
+
+# Previous Version
+PVER=0.6.0110
+# Corrent Version
+CVER=0.6.0214
+
+chown root.root /lib/udev/rules.d/asi.rules
+chmod 644 /lib/udev/rules.d/asi.rules
+
+chown root.root /usr/include/ASICamera*
+chmod 644 /usr/include/ASICamera*
+
+chown root.root /usr/lib/libASICamera*
+chmod 777 /usr/lib/libASICamera*
+
+### First install , link does not exist
+# file -E /usr/lib/libASICamera.so
+# /usr/lib/libASICamera.so: ERROR: cannot stat `/usr/lib/libASICamera.so' (No such file or directory)
+# $? = 1
+
+### reinstall or upgrade, link not previous or current version
+# file /usr/lib/libASICamera.so | grep $PVER
+# $? = 1
+# file /usr/lib/libASICamera.so | grep $CVER
+# $? = 1
+
+file -E /usr/lib/libASICamera.so
+link1_notexist=$?
+
+if [ $link1_notexist -eq 0 ] ; then
+	file /usr/lib/libASICamera.so | grep $PVER
+	link1_notpver=$?
+
+	file /usr/lib/libASICamera.so | grep $CVER
+	link1_notcver=$?
+else
+	link1_notpver=0
+	link1_notcver=0
+fi
+
+file -E /usr/lib/libASICamera2.so
+link2_notexist=$?
+
+if [ $link2_notexist -eq 0 ] ; then
+	file /usr/lib/libASICamera2.so | grep $PVER
+	link2_notpver=$?
+
+	file /usr/lib/libASICamera2.so | grep $CVER
+	link2_notcver=$?
+else
+	link2_notpver=0
+	link2_notcver=0
+fi
+
+if [ $link1_notpver -eq 0 ] || [ $link1_notcver -eq 0 ] ; then
+	rm -rf /usr/lib/libASICamera.so
+
+	cd /usr/lib ; ln -s libASICamera.so.$CVER libASICamera.so
+	chown root.root /usr/lib/libASICamera*.so
+fi
+
+if [ $link2_notpver -eq 0 ] || [ $link2_notcver -eq 0 ] ; then
+	rm -rf /usr/lib/libASICamera2.so
+
+	cd /usr/lib ; ln -s libASICamera2.so.$CVER libASICamera2.so
+	chown root.root /usr/lib/libASICamera*.so
+fi
+
+/sbin/ldconfig
+
+exit 0

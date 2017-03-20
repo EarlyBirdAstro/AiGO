@@ -1,0 +1,13 @@
+#!/bin/sh
+
+type=$1
+echo "postrm="$type
+
+if [ x"$type" = x"remove" ] ; then
+	rm -rf /usr/lib/libASICamera.so
+	rm -rf /usr/lib/libASICamera2.so
+fi
+
+/sbin/ldconfig
+
+exit 0
