@@ -1,0 +1,29 @@
+* 2017-03-19 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-92
+- Modify z99-aigo.rules
+- Added 00-aigo.rules
+
+* 2017-03-19 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-91
+- Modify z99-aigo.rules
+
+* 2017-03-17 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-90
+- Added z99-aigo.rules, aigo.conf, lin-guider.conf
+- postinst: add aigo_config to LXPanel
+
+* 2017-03-09 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-2
+- Change aigo_config.desktop Categories=System;
+
+* 2017-03-07 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-1
+- Added switch_libasicamera.sh
+- Added Switch libASI Version to aigo_config
+- Added aigo_version
+
+* 2017-03-02 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.92-1
+- Added do_change_ssid.sh
+- Added Expand Filesystem to aigo_config
+
+* 2017-02-24 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.91-1
+- Rename aigo- to aigo_
+- Added aigo_look.sh
+
+* 2017-02-23 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.90-1
+- First

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=AiGO Config
+Comment=AiGO Software Configuration Tool
+#Exec=lxterminal --geometry=80x24 -e sudo /usr/local/bin/aigo-config
+Exec=lxterminal --geometry=80x24 -e "bash -c \"sudo /usr/local/bin/aigo_config\""
+Icon=aigo.png
+Terminal=true
+Type=Application
+StartupNotify=false
+Categories=System;
+#X-GNOME-Autostart-Delay=5
