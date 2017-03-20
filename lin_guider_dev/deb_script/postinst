@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "postinst="$1
+
+chown root.root /usr/bin/lin_guider
+chmod 755 /usr/bin/lin_guider
+
+chown root.root /usr/share/applications/lin_guider.desktop
+chmod 644 /usr/share/applications/lin_guider.desktop
+
+chown root.root /usr/share/pixmaps/lin_guider.png
+chmod 644 /usr/share/pixmaps/lin_guider.png
+
+exit 0

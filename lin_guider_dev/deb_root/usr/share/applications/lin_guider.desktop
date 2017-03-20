@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Encoding=UTF-8
+Name=lin_guider
+Comment=Lin-guider is an astronomical autoguiding program for Linux
+Exec=lin_guider
+Icon=lin_guider
+Terminal=false
+Type=Application
+Categories=Education;Science;Astronomy;
+GenericName=lin_guider
