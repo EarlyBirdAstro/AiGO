@@ -47,25 +47,25 @@ chfile z99-aigo.rules $UDEV_RULES_DIR root.root 644
 
 chfile aigo.conf $LOCAL_DIR/etc root.root 644
 
-chfile $LG_CONF $LG_CONF_DIR $AIGO_USER.$AIGO_USER 664
-# TODO: GM_software aigo.aigo 775
-chown $AIGO_USER.$AIGO_USER $LG_CONF_DIR
-chmod 775 $LG_CONF_DIR
+#chfile $LG_CONF $LG_CONF_DIR $AIGO_USER.$AIGO_USER 664
+# GM_software aigo.aigo 775
+#chown $AIGO_USER.$AIGO_USER $LG_CONF_DIR
+#chmod 775 $LG_CONF_DIR
 
-# TODO: Add aigo_config to LXPanel
+# Add aigo_config to LXPanel
 grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
 RET=$?
 if [ $RET -eq 1 ] ; then
 	cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postinst.bak
 	sed -i -z 's/lxterminal.desktop/lxterminal.desktop\n    }\n    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop/' $LXPANEL_CONF_DIR/$LXPANEL_CONF
-fi
 
-# TODO: Reload LXPanel
-sleep 1
-su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
-sleep 1
-su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
-sleep 1
-su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
+	# Restart LXPanel
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
+fi
 
 exit 0

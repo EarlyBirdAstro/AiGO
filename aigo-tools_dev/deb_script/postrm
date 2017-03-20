@@ -39,7 +39,7 @@ rmfile z99-aigo.rules $UDEV_RULES_DIR
 
 rmfile aigo.conf $LOCAL_DIR/etc
 
-# TODO: Remove aigo_config from LXPanel
+# Remove aigo_config from LXPanel
 if [ x"$type" = x"remove" ] ; then
 	grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
 	RET=$?
