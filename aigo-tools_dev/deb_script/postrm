@@ -11,6 +11,7 @@ AIGO_USER=aigo
 AIGO_HOME=/home/$AIGO_USER
 LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
 LXPANEL_CONF=panel
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
 
 rmfile() {
 	FNAME=$1
@@ -57,5 +58,8 @@ if [ x"$type" = x"remove" ] ; then
 	sleep 1
 	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 fi
+
+# Remove autostart aigo_config
+rmfile aigo_config.desktop $AUTOSTART_DIR
 
 exit 0

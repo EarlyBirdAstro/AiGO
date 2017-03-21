@@ -13,6 +13,7 @@ LG_CONF_DIR=$AIGO_HOME/.config/GM_software
 LG_CONF=lin-guider.conf
 LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
 LXPANEL_CONF=panel
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
 
 chfile() {
 	FNAME=$1
@@ -67,5 +68,8 @@ if [ $RET -eq 1 ] ; then
 	sleep 1
 	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 fi
+
+# Add autostart aigo_config
+chfile aigo_config.desktop $AUTOSTART_DIR $AIGO_USER.$AIGO_USER 644
 
 exit 0
