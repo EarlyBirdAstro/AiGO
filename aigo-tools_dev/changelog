@@ -1,3 +1,6 @@
+* 2017-03-19 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-93
+- Big modify aigo_config
+
 * 2017-03-19 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.0.93-92
 - Modify z99-aigo.rules
 - Added 00-aigo.rules
