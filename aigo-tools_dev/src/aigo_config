@@ -13,6 +13,11 @@ AIGO_VER=`cat /etc/aigo_version`
 BNAME=`basename $0`
 VER=0.0.94
 
+SSID_MAX_LEN=10
+WPAPASS_MAX_LEN=10
+INTERACTIVE=True
+ASK_TO_REBOOT=0
+
 INPUT=/tmp/aigo_config.input
 OUTPUT=/tmp/aigo_config.output
 
@@ -22,9 +27,9 @@ OUTPUT=/tmp/aigo_config.output
 CONFDIR=/etc/hostapd
 CONFFILE=hostapd.conf
 
-function change_wifi_ssid() {
+change_wifi_ssid() {
 	OLDSSID=`grep "^ssid=" $CONFDIR/$CONFFILE | awk -F "ssid=" '{print $2}'`
-	if dialog --colors --clear --title " Change WiFi SSID " --max-input 32 --inputbox "Enter new SSID (Maximum of 32 ASCII characters):" 8 60 $OLDSSID 2>$OUTPUT; then
+	if dialog --colors --clear --title " Change WiFi SSID " --max-input $SSID_MAX_LEN --inputbox "Enter new SSID (Maximum of $SSID_MAX_LEN ASCII characters):" 8 60 $OLDSSID 2>$OUTPUT; then
 
 		NEWSSID=`cat $OUTPUT`
 		TRIMNEWSSID=`echo $NEWSSID | sed 's/[[:space:]]//g'`
@@ -53,9 +58,9 @@ function change_wifi_ssid() {
 	fi
 }
 
-function change_wifi_password() {
+change_wifi_password() {
 	OLDPWD=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F "wpa_passphrase=" '{print $2}'`
-	if dialog --colors --clear --title " Change WiFi Password " --max-input 10 --insecure --passwordbox "Enter new password (Must be 10 ASCII characters!):" 8 60 2>$OUTPUT; then
+	if dialog --colors --clear --title " Change WiFi Password " --max-input $WPAPASS_MAX_LEN --insecure --passwordbox "Enter new password (Must be $WPAPASS_MAX_LEN ASCII characters!):" 8 60 2>$OUTPUT; then
 
 		NEWPWD=`cat $OUTPUT`
 		TRIMNEWPWD=`echo $NEWPWD | sed 's/[[:space:]]//g'`
@@ -96,7 +101,7 @@ function change_wifi_password() {
 	fi
 }
 
-function change_user_password() {
+change_user_password() {
 	clear
 
 	/usr/bin/passwd $AIGOUSER
@@ -131,7 +136,7 @@ function change_user_password() {
 # passwd: password unchanged
 }
 
-function upgrade_aigo-tools() {
+upgrade_aigo-tools() {
 	clear
 
 	sudo apt-get update
@@ -160,10 +165,101 @@ function upgrade_aigo-tools() {
 	fi
 }
 
-function switch_libasicamera() {
+switch_libasicamera() {
 	switch_libasicamera.sh
 }
 
+# This code from raspi-config
+do_expand_rootfs() {
+	ROOT_PART=$(mount | sed -n 's|^/dev/\(.*\) on / .*|\1|p')
+	PART_NUM=${ROOT_PART#mmcblk0p}
+	if [ "$PART_NUM" = "$ROOT_PART" ]; then
+		dialog --msgbox "$ROOT_PART is not an SD card. Don't know how to expand" 20 60
+		return 0
+	fi
+
+	# NOTE: the NOOBS partition layout confuses parted. For now, let's only
+	# agree to work with a sufficiently simple partition layout
+	if [ "$PART_NUM" -ne 2 ]; then
+		dialog --msgbox "Your partition layout is not currently supported by this tool. You are probably using NOOBS, in which case your root filesystem is already expanded anyway." 20 60
+		return 0
+	fi
+
+	LAST_PART_NUM=$(parted /dev/mmcblk0 -ms unit s p | tail -n 1 | cut -f 1 -d:)
+	if [ $LAST_PART_NUM -ne $PART_NUM ]; then
+		dialog --msgbox "$ROOT_PART is not the last partition. Don't know how to expand" 20 60
+		return 0
+	fi
+
+	# Get the starting offset of the root partition
+	PART_START=$(parted /dev/mmcblk0 -ms unit s p | grep "^${PART_NUM}" | cut -f 2 -d: | sed 's/[^0-9]//g')
+	[ "$PART_START" ] || return 1
+	# Return value will likely be error for fdisk as it fails to reload the
+	# partition table because the root fs is mounted
+	fdisk /dev/mmcblk0 <<EOF
+p
+d
+$PART_NUM
+n
+p
+$PART_NUM
+$PART_START
+
+p
+w
+EOF
+	ASK_TO_REBOOT=1
+
+	# now set up an init.d script
+	cat <<EOF > /etc/init.d/resize2fs_once &&
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          resize2fs_once
+# Required-Start:
+# Required-Stop:
+# Default-Start: 3
+# Default-Stop:
+# Short-Description: Resize the root filesystem to fill partition
+# Description:
+### END INIT INFO
+
+. /lib/lsb/init-functions
+
+case "\$1" in
+	start)
+		log_daemon_msg "Starting resize2fs_once" &&
+		resize2fs /dev/$ROOT_PART &&
+		touch /.resized &&
+		update-rc.d resize2fs_once remove &&
+		rm /etc/init.d/resize2fs_once &&
+		log_end_msg \$?
+		;;
+	*)
+		echo "Usage: \$0 start" >&2
+		exit 3
+	;;
+esac
+EOF
+	chmod +x /etc/init.d/resize2fs_once &&
+	update-rc.d resize2fs_once defaults &&
+	if [ "$INTERACTIVE" = True ]; then
+		dialog --msgbox "Root partition has been resized.\nThe filesystem will be enlarged upon the next reboot" 20 60
+	fi
+}
+
+do_finish() {
+	if [ $ASK_TO_REBOOT -eq 1 ]; then
+		dialog --yesno "Would you like to reboot now?" 20 60
+		if [ $? -eq 0 ]; then # yes
+			sync
+			reboot
+		fi
+	fi
+	return 0
+}
+
+
+#=== Main ===#
 # Color
 # \Z 正常底色,字色 0=深灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=黑底, 白字
 # \Zr\Z 灰字, 底色 0=灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=白底, 黑字
@@ -183,14 +279,8 @@ MenuHeight=20
 MenuWidth=80
 MenuItemHeight=10
 
-#MenuTag="n Change WiFi IP"
-#MenuItem="Default (192.168.11.254)  - Coming Soon"
-
 #MenuTag="n Change User ID"
 #MenuItem="Default (aigo)            - Coming Soon"
-
-#MenuTag="n Change LAN IP"
-#MenuItem="Default (DHCP)          - Coming Soon"
 
 #HCC#MenuTag="n Switch 8192cu/8188eu"
 #HCC#MenuItem="Default (rtl8192cu, driver=nl80211) - Coming Soon"
@@ -198,23 +288,37 @@ MenuItemHeight=10
 #MenuTag="n Switch Network Manager"
 #MenuItem="Default (networking)      - Coming Soon"
 
+CURRENT_SSID=""
 MenuTag01="1 Change WiFi SSID"
-MenuItem01="Default (AiGO_xxxxxx)"
+MenuItem01="Current: $CURRENT_SSID"
 
+CURRENT_WPAPASS=""
 MenuTag02="2 Change WiFi Password"
-MenuItem02="Default (1234567890)"
+MenuItem02="Current: $CURRENT_WPAPASS"
 
-MenuTag03="3 Change User Password"
-MenuItem03="Default (admin123)"
+CURRENT_WANIP="xxx.xxx.xxx.xxx"
+MenuTag03="3 Change WiFi IP"
+MenuItem03="Current: $CURRENT_WANIP - Coming Soon"
 
-MenuTag04="4 Switch libASI Version"
-MenuItem04="Default (latest)"
+CURRENT_LANIP="xxx.xxx.xxx.xxx"
+MenuTag04="4 Change LAN IP"
+MenuItem04="Current: $CURRENT_LANIP - Coming Soon"
 
-MenuTag08="8 Upgrade"
-MenuItem08="Upgrade (OS/Kernel/App)   - Now only aigo-tools"
+MenuTag05="5 Change User Password"
+MenuItem05="Default: admin123 (select 5 & click <OK> to reset)"
 
-MenuTag09="9 Expand Filesystem"
-MenuItem09="Exec raspi-config"
+CURRENT_LIBASI_VER="none"
+MenuTag06="6 Switch libASI Version"
+MenuItem06="Current: $CURRENT_LIBASI_VER"
+
+MenuTag07="7"
+MenuItem07=""
+
+MenuTag08="8 Expand Filesystem"
+MenuItem08="Ensures that all of the SD card storage is available to the OS"
+
+MenuTag09="9 Upgrade"
+MenuItem09="Upgrade (OS/Kernel/App): Now only aigo-tools"
 
 MenuTag00="0 Exit"
 MenuItem00="Exit the program."
@@ -222,6 +326,27 @@ MenuItem00="Exit the program."
 
 while true
 do
+
+CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`
+MenuItem01="Current: $CURRENT_SSID** (Select 1 & click <OK> to reset)"
+
+CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`
+MenuItem02="Current: $CURRENT_WPAPASS** (Select 2 & click <OK> to reset)"
+
+CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+MenuItem03="Current: $CURRENT_WANIP - Coming Soon"
+
+CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+MenuItem04="Current: $CURRENT_LANIP - Coming Soon"
+
+file -E /usr/lib/libASICamera.so
+RET=$?
+if [ $RET -eq 0 ] ; then
+	CURRENT_LIBASI_VER=`file -E /usr/lib/libASICamera.so | awk -F "libASICamera.so." '{print $3}'`
+else
+	CURRENT_LIBASI_VER="none"
+fi
+MenuItem06="Current: $CURRENT_LIBASI_VER"
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Exit" \
@@ -234,6 +359,9 @@ $MenuHeight $MenuWidth $MenuItemHeight \
 "$MenuTag02" "$MenuItem02" \
 "$MenuTag03" "$MenuItem03" \
 "$MenuTag04" "$MenuItem04" \
+"$MenuTag05" "$MenuItem05" \
+"$MenuTag06" "$MenuItem06" \
+"$MenuTag07" "$MenuItem07" \
 "$MenuTag08" "$MenuItem08" \
 "$MenuTag09" "$MenuItem09" \
 "$MenuTag00" "$MenuItem00" \
@@ -248,46 +376,51 @@ case $menuitem in
 	"$MenuTag02")
 		change_wifi_password
 		;;
-#	"$MenuTag")
-#		# Coming Soon - change_wifi_ip
-#		;;
-#	"$MenuTag")
-#		# Coming Soon - change_user_id
-#		;;
 	"$MenuTag03")
-		change_user_password
+		# TODO: change_wifi_ip
 		;;
 	"$MenuTag04")
+		# TODO: change_lan_ip
+		;;
+	"$MenuTag05")
+		change_user_password
+		;;
+	"$MenuTag06")
 		switch_libasicamera
 		;;
-#	"$MenuTag06")
-#		# Coming Soon - change_lan_ip
+	"$MenuTag07")
+		;;
+	"$MenuTag08")
+		INTERACTIVE=False
+		do_expand_rootfs
+		do_finish
+		clear
+		echo "Please reboot"
+		;;
+	"$MenuTag09")
+		# TODO: upgrade_os , upgrade_kernel , upgrade_app
+		upgrade_aigo-tools
+		clear
+		echo "Re-execute aigo_config"
+		break
+		;;
+	"$MenuTag00")
+		clear
+		echo "Exit"
+		break
+		;;
+	*)
+		clear
+		echo "Exit"
+		break
+		;;
+#	"$MenuTag")
+#		# Coming Soon - change_user_id
 #		;;
 #	"$MenuTag07")
 #		# Coming Soon - switch_wifi_device
 #		# Coming Soon - switch_network_manager
 #		;;
-	"$MenuTag08")
-		# Coming Soon - upgrade_os , upgrade_kernel , upgrade_app
-		upgrade_aigo-tools
-		break
-		;;
-	"$MenuTag09")
-		# Coming Soon - expend_filesystem
-		clear
-		/usr/bin/raspi-config
-		break
-		;;
-	"$MenuTag00")
-		echo "Exit"
-		clear
-		break
-		;;
-	*)
-		echo "Cancel"
-		clear
-		break
-		;;
 esac
 
 done
