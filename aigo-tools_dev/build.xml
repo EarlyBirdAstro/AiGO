@@ -27,7 +27,7 @@
 	<property name="deb_script" value="deb_script"/>
         <property name="deb_conf" value="deb_conf"/>
         <property name="deb_src" value="src"/>
-        <property name="src_dir" value="/opt/aigo"/>
+        <property name="aigo_dir" value="/opt/aigo"/>
         <property name="src_files" value="aigo_config, aigo_config.desktop, aigo.png, aigo_version, aigo_look.sh, do_change_ssid.sh, switch_libasicamera.sh, 00-aigo.rules, z99-aigo.rules, aigo.conf, lin-guider.conf"/>
 
 	<!-- ================================================================ -->
@@ -108,9 +108,9 @@
 	<!--                       tagert: move lastest src                   -->
 	<!-- ================================================================ -->
 	<target name="update-src">
-		<delete dir="${deb_root}${src_dir}"/>
-		<mkdir dir="${deb_root}${src_dir}"/>
-		<copy todir="${deb_root}${src_dir}">
+		<delete dir="${deb_root}${aigo_dir}"/>
+		<mkdir dir="${deb_root}${aigo_dir}"/>
+		<copy todir="${deb_root}${aigo_dir}">
 			<fileset dir="${deb_src}" includes="${src_files}"/>
 		</copy>
 	</target>
@@ -141,5 +141,6 @@
 	<target name="clean">
 		<delete dir="${dist.dir}" includeemptydirs="true"/>
 		<delete dir="${lib.dir}" includeemptydirs="true"/>
+		<delete dir="${deb_root}/opt" includeemptydirs="true"/>
 	</target>
 </project> 
