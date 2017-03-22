@@ -59,15 +59,15 @@ RET=$?
 if [ $RET -eq 1 ] ; then
 	cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postinst.bak
 	sed -i -z 's/lxterminal.desktop/lxterminal.desktop\n    }\n    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop/' $LXPANEL_CONF_DIR/$LXPANEL_CONF
-
-	# Restart LXPanel
-	sleep 1
-	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
-	sleep 1
-	su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
-	sleep 1
-	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 fi
+
+# Restart LXPanel
+sleep 1
+su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
+sleep 1
+su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
+sleep 1
+su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 
 # Add autostart aigo_config
 chfile aigo_config.desktop $AUTOSTART_DIR $AIGO_USER.$AIGO_USER 644

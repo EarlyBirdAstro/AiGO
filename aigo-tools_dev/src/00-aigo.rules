@@ -1,4 +1,4 @@
 # === Add Device ===
 # change QHY5L-II to load qhy5ii_v3_compat.hex
 #ATTRS{idVendor}=="1618", ATTRS{idProduct}=="0920", RUN+="/sbin/fxload -t fx2 -I /etc/qhyccd/qhy5ii_v2.hex -D $env{DEVNAME}"
-ATTRS{idVendor}=="1618", ATTRS{idProduct}=="0920", RUN+="/sbin/fxload -t fx2 -I /etc/qhyccd/qhy5ii_v3_compat.hex -D $env{DEVNAME}"
+#ATTRS{idVendor}=="1618", ATTRS{idProduct}=="0920", RUN+="/sbin/fxload -t fx2 -I /etc/qhyccd/qhy5ii_v3_compat.hex -D $env{DEVNAME}"
