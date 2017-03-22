@@ -1,2 +1,3 @@
+deb_root/opt/*
 dist/*
 lib/*
