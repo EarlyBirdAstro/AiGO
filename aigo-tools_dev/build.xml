@@ -141,6 +141,5 @@
 	<target name="clean">
 		<delete dir="${dist.dir}" includeemptydirs="true"/>
 		<delete dir="${lib.dir}" includeemptydirs="true"/>
-		<delete dir="${deb_root}/opt" includeemptydirs="true"/>
 	</target>
 </project> 
