@@ -290,26 +290,26 @@ MenuItemHeight=10
 
 CURRENT_SSID=""
 MenuTag01="1 Change WiFi SSID"
-MenuItem01="Current: $CURRENT_SSID"
+MenuItem01="$CURRENT_SSID"
 
 CURRENT_WPAPASS=""
 MenuTag02="2 Change WiFi Password"
-MenuItem02="Current: $CURRENT_WPAPASS"
+MenuItem02="$CURRENT_WPAPASS"
 
 CURRENT_WANIP="xxx.xxx.xxx.xxx"
 MenuTag03="3 Change WiFi IP"
-MenuItem03="Current: $CURRENT_WANIP - Coming Soon"
+MenuItem03="$CURRENT_WANIP - Coming Soon"
 
 CURRENT_LANIP="xxx.xxx.xxx.xxx"
 MenuTag04="4 Change LAN IP"
-MenuItem04="Current: $CURRENT_LANIP - Coming Soon"
+MenuItem04="$CURRENT_LANIP - Coming Soon"
 
 MenuTag05="5 Change User Password"
-MenuItem05="Default: admin123 (select 5 & click <OK> to reset)"
+MenuItem05="admin123 (select 5 & click <OK> to reset)"
 
 CURRENT_LIBASI_VER="none"
 MenuTag06="6 Switch libASI Version"
-MenuItem06="Current: $CURRENT_LIBASI_VER"
+MenuItem06="$CURRENT_LIBASI_VER"
 
 MenuTag07="7"
 MenuItem07=""
@@ -327,17 +327,17 @@ MenuItem00="Exit the program."
 while true
 do
 
-CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`
-MenuItem01="Current: $CURRENT_SSID** (Select 1 & click <OK> to reset)"
+CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}'`
+MenuItem01="$CURRENT_SSID (Select 1 & click <OK> to reset)"
 
 CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`
-MenuItem02="Current: $CURRENT_WPAPASS** (Select 2 & click <OK> to reset)"
+MenuItem02="$CURRENT_WPAPASS** (Select 2 & click <OK> to reset)"
 
 CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
-MenuItem03="Current: $CURRENT_WANIP - Coming Soon"
+MenuItem03="$CURRENT_WANIP - Coming Soon"
 
 CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
-MenuItem04="Current: $CURRENT_LANIP - Coming Soon"
+MenuItem04="$CURRENT_LANIP - Coming Soon"
 
 file -E /usr/lib/libASICamera.so
 RET=$?
@@ -346,7 +346,7 @@ if [ $RET -eq 0 ] ; then
 else
 	CURRENT_LIBASI_VER="none"
 fi
-MenuItem06="Current: $CURRENT_LIBASI_VER"
+MenuItem06="$CURRENT_LIBASI_VER"
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Exit" \
