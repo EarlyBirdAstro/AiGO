@@ -14,10 +14,11 @@ AiGO is Ai = Artificial intelligence, G = Guider , O = Observatory
   - ZWO
     * ASI120MM-S (Native / INDI)
     * ASI174MM (Native)
-    * ASI120MM (AiGO Special Rules + Flash 'endpoint 512 bytes' firmware, Native)
+    * ASI120MM (Flash 'endpoint 512 bytes' firmware, Native)
 
   - QHYCCD
-    * QHY5L-II-M (AiGO Special Rules, Native)
+    * QHY 5L-II-M (Native / INDI)
+    * QHY 5L-II-C (Native / INDI)
 
 ## Require
 
