@@ -70,6 +70,6 @@ sleep 1
 su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 
 # Add autostart aigo_config
-chfile aigo_config.desktop $AUTOSTART_DIR $AIGO_USER.$AIGO_USER 644
+#chfile aigo_config.desktop $AUTOSTART_DIR $AIGO_USER.$AIGO_USER 644
 
 exit 0

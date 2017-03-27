@@ -18,11 +18,18 @@ WPAPASS_MAX_LEN=10
 INTERACTIVE=True
 ASK_TO_REBOOT=0
 
+AIGO_USER=aigo
+AIGO_HOME=/home/$AIGO_USER
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
+
 INPUT=/tmp/aigo_config.input
 OUTPUT=/tmp/aigo_config.output
 
 [ -f $OUTPUT ] && rm -f $OUTPUT
 [ -f $INPUT ] && rm -f $INPUT
+
+# aigo_config run once on first boot
+[ -f $AUTOSTART_DIR/$BNAME.desktop ] && rm -f $AUTOSTART_DIR/$BNAME.desktop
 
 CONFDIR=/etc/hostapd
 CONFFILE=hostapd.conf

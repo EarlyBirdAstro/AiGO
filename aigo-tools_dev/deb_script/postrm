@@ -60,6 +60,6 @@ if [ x"$type" = x"remove" ] ; then
 fi
 
 # Remove autostart aigo_config
-rmfile aigo_config.desktop $AUTOSTART_DIR
+#rmfile aigo_config.desktop $AUTOSTART_DIR
 
 exit 0

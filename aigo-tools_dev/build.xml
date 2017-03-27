@@ -9,7 +9,7 @@
     <property environment="env"/>
 	<property name="package_name" value="aigo-tools"/>
 	<property name="package_version" value="0.0.93"/>
-	<property name="debian_version" value="93"/>
+	<property name="debian_version" value="94"/>
 	<property name="section" value="science"/>
 	<property name="priority" value="optional"/>
 	<property name="architecture" value="armhf"/>
