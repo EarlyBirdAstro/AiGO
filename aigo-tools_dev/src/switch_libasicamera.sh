@@ -8,10 +8,11 @@ fi
 
 ASSIGN_VER=$1
 
+VER=0.1.0
 AUTHOR="Contributed by Cheng-Chang Ho."
+
 AIGO_VER=`cat /etc/aigo_version`
 BNAME=`basename $0`
-VER=0.0.94
 AIGO_CONF=/usr/local/etc/aigo.conf
 
 INPUT=/tmp/switch_libasicamera.input

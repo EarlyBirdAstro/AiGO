@@ -6,12 +6,13 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
-AIGOUSER=`echo $HOME | awk -F '/' '{print $3}'`
+VER=0.1.0
 AUTHOR="Contributed by Cheng-Chang Ho."
+
+AIGOUSER=`echo $HOME | awk -F '/' '{print $3}'`
 #VER=`sudo dpkg -l aigo-tools | grep "aigo-tools" | awk '{print $3}'`
 AIGO_VER=`cat /etc/aigo_version`
 BNAME=`basename $0`
-VER=0.0.94
 
 SSID_MAX_LEN=11
 WPAPASS_MAX_LEN=10

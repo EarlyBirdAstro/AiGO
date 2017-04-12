@@ -6,8 +6,8 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
+VER=0.1.0
 AUTHOR="Contributed by Cheng-Chang Ho."
-VER=0.0.93
 
 do_change_ssid() {
 OF=/etc/init.d/change_ssid_once
