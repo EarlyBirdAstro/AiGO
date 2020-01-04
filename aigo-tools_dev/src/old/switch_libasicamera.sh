@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Everything else needs to be run as root
-if [ $(id -u) -ne 0 ]; then
-  printf "Script must be run as root. Try 'sudo switch_libasicamera.sh'\n"
+BNAME=`basename $0`
+if [[ ${EUID} -ne 0 ]]; then
+  printf "Script must be run as root. Try 'sudo $BNAME'\n"
   exit 1
 fi
 

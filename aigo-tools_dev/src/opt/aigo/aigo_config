@@ -1,0 +1,355 @@
+#!/bin/bash
+
+# Everything else needs to be run as root
+BNAME=`basename $0`
+if [[ ${EUID} -ne 0 ]]; then
+  TITLE="Error !"
+  MSG="Script must be run as root.\n\nTry 'sudo $BNAME'\n"
+  dialog --colors --clear --title " \Z1$TITLE\Zn " --msgbox "\n\Z1$MSG\Zn" 10 70
+  exit 1
+fi
+
+# TODO:
+# - sub function
+#   . Install other Apps
+#     PlanetaryImager
+#     wxastrocapture
+
+VER=`dpkg -s aigo-tools | grep Version | awk -F ': ' '{print $2}'`
+
+AUTHOR="Contributed by Cheng-Chang Ho."
+
+AIGOUSER=`echo $HOME | awk -F '/' '{print $3}'`
+AIGO_VER=`cat /etc/aigo_version`
+
+SSID_MAX_LEN=11
+WPAPASS_MAX_LEN=10
+INTERACTIVE=True
+ASK_TO_REBOOT=0
+
+AIGO_USER=aigo
+AIGO_HOME=/home/$AIGO_USER
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
+
+INPUT=/tmp/aigo_config.input
+OUTPUT=/tmp/aigo_config.output
+
+[ -f $INPUT ] && rm -f $INPUT
+[ -f $OUTPUT ] && rm -f $OUTPUT
+
+# aigo_config run once on first boot
+[ -f $AUTOSTART_DIR/$BNAME.desktop ] && rm -f $AUTOSTART_DIR/$BNAME.desktop
+
+CONFDIR=/etc/hostapd
+CONFFILE=hostapd.conf
+
+change_user_password() {
+	clear
+
+	/usr/bin/passwd $AIGOUSER
+	RET=$?
+	echo $RET > "${OUTPUT}"
+
+	sleep 5
+
+	if [ $RET -eq 0 ]; then
+		dialog --colors --clear --title " Change User Password " --msgbox "\nChange password success." 7 50
+	else
+		dialog --colors --clear --title " Change User Password " --msgbox "\n\Z1Change password fail!\Zn" 7 50
+	fi
+
+# RET=10 
+# 1. (current) UNIX password: => 直接按 Enter 或輸入錯誤密碼
+# 2. Enter new UNIX password: 
+#    Retype new UNIX password: 
+#    You must choose a longer password  => 密碼和確認密碼相同, 但是長度不足, 3 次都輸入長度不足
+# 3. Enter new UNIX password: 
+#    Retype new UNIX password: 
+#    No password supplied  => 密碼和確認密碼都直接按 Enter, 3 次都直接按 Enter
+# 4. Enter new UNIX password:
+#    Retype new UNIX password: 
+#    Sorry, passwords do not match => 
+#    No password supplied  => 密碼和確認密碼不同
+# 5. Enter new UNIX password: 
+#    Retype new UNIX password: 
+#    Password unchanged => 新密碼和舊密碼一樣, 3 次都一樣
+# ** 最後都會出現
+# passwd: Authentication token manipulation error
+# passwd: password unchanged
+}
+
+upgrade_os-kernel() {
+	clear
+
+	# exec aigo_upgrade.sh
+	# return = 0 then Re-execute aigo_config
+	# return = 1 then Reboot
+	# return = other then Fail
+	/usr/local/bin/aigo_upgrade.sh
+}
+
+upgrade_aigo-tools() {
+	clear
+
+	sudo apt-get update
+	RET=$?
+	echo $RET > "${OUTPUT}"
+
+	sleep 2
+
+	if [ $RET -ne 0 ]; then
+		dialog --colors --clear --title "  Upgrade aigo-tools " --msgbox "\n\Z1 exec 'apt-get update' fail!\Zn" 7 50
+		return -1
+	fi
+
+	clear
+
+	sudo apt install --reinstall aigo-tools -y --allow-unauthenticated
+	RET=$?
+	echo $RET > "${OUTPUT}"
+
+	sleep 1
+
+	if [ $RET -eq 0 ]; then
+		dialog --colors --clear --title "  Upgrade aigo-tools " --msgbox "\n aigo-tools upgrade success.\n\n \Z4Re-execute aigo_config\Zn" 9 50
+	else
+		dialog --colors --clear --title "  Upgrade aigo-tools " --msgbox "\n\Z1 aigo-tools upgrade fail!\Zn" 7 50
+	fi
+}
+
+# This code from raspi-config
+do_expand_rootfs() {
+	ROOT_PART=$(mount | sed -n 's|^/dev/\(.*\) on / .*|\1|p')
+	PART_NUM=${ROOT_PART#mmcblk0p}
+	if [ "$PART_NUM" = "$ROOT_PART" ]; then
+		dialog --msgbox "$ROOT_PART is not an SD card. Don't know how to expand" 20 60
+		return 0
+	fi
+
+	# NOTE: the NOOBS partition layout confuses parted. For now, let's only
+	# agree to work with a sufficiently simple partition layout
+	if [ "$PART_NUM" -ne 2 ]; then
+		dialog --msgbox "Your partition layout is not currently supported by this tool. You are probably using NOOBS, in which case your root filesystem is already expanded anyway." 20 60
+		return 0
+	fi
+
+	LAST_PART_NUM=$(parted /dev/mmcblk0 -ms unit s p | tail -n 1 | cut -f 1 -d:)
+	if [ $LAST_PART_NUM -ne $PART_NUM ]; then
+		dialog --msgbox "$ROOT_PART is not the last partition. Don't know how to expand" 20 60
+		return 0
+	fi
+
+	# Get the starting offset of the root partition
+	PART_START=$(parted /dev/mmcblk0 -ms unit s p | grep "^${PART_NUM}" | cut -f 2 -d: | sed 's/[^0-9]//g')
+	[ "$PART_START" ] || return 1
+	# Return value will likely be error for fdisk as it fails to reload the
+	# partition table because the root fs is mounted
+	fdisk /dev/mmcblk0 <<EOF
+p
+d
+$PART_NUM
+n
+p
+$PART_NUM
+$PART_START
+
+p
+w
+EOF
+
+	# now set up an init.d script
+	cat <<EOF > /etc/init.d/resize2fs_once &&
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          resize2fs_once
+# Required-Start:
+# Required-Stop:
+# Default-Start: 3
+# Default-Stop:
+# Short-Description: Resize the root filesystem to fill partition
+# Description:
+### END INIT INFO
+
+. /lib/lsb/init-functions
+
+case "\$1" in
+	start)
+		log_daemon_msg "Starting resize2fs_once" &&
+		resize2fs /dev/$ROOT_PART &&
+		touch /.resized &&
+		update-rc.d resize2fs_once remove &&
+		rm /etc/init.d/resize2fs_once &&
+		log_end_msg \$?
+		;;
+	*)
+		echo "Usage: \$0 start" >&2
+		exit 3
+	;;
+esac
+EOF
+	chmod +x /etc/init.d/resize2fs_once &&
+	update-rc.d resize2fs_once defaults &&
+	if [ "$INTERACTIVE" = True ]; then
+		dialog --msgbox "Root partition has been resized.\nThe filesystem will be enlarged upon the next reboot" 20 60
+	fi
+}
+
+do_reboot() {
+	if [ $ASK_TO_REBOOT -eq 1 ]; then
+		dialog --yesno "Would you like to reboot now?" 20 60
+		if [ $? -eq 0 ]; then # yes
+			sync
+			reboot
+		fi
+	else
+		dialog --msgbox "A reboot is needed" 20 60
+		sync
+		reboot
+	fi
+
+	return 0
+}
+
+do_raspi-config() {
+	sudo raspi-config
+}
+
+install-astronomy-softwares() {
+	echo
+}
+
+#=== Main Menu ===#
+# Color
+# \Z 正常底色,字色 0=深灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=黑底, 白字
+# \Zr\Z 灰字, 底色 0=灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=白底, 黑字
+# Bold is set by 'b', reset by 'B'. Reverse is set by 'r', reset by 'R'. Underline is set by 'u', reset by 'U'.
+# Restore normal settings with "\Zn"
+
+#BackTitle="\Z7AiGO $AIGO_VER\Zn - $BNAME v$VER"
+BackTitle="\Z7AiGO $AIGO_VER\Zn - aigo-tools ver: $VER"
+
+MenuTitle="\Zr\Z7 AiGO Software Configuration Tool (aigo_config) \Zn"
+
+MenuHeight=25
+MenuWidth=100
+MenuItemHeight=10
+
+Menu01Tag="1 WiFi Options"
+Menu01Item="Configure WiFi SSID / Password / IP"
+
+CURRENT_LANIP="Undefined"
+Menu02Tag="2 Change LAN IP"
+Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn"
+
+Menu03Tag="3 Change User Password"
+Menu03Item="\Zr\Z7aigo\Zn user default password is \Zr\Z7admin123\Zn"
+
+Menu04Tag="4 raspi-config"
+Menu04Item="Raspberry Pi Software Configuration Tool"
+
+Menu05Tag="5"
+Menu06Tag="6"
+
+Menu07Tag="7 Get Astrometry fits"
+Menu07Item="Getting index files for Astrometry.net \Z1(Coming Soon)\Zn"
+
+Menu08Tag="8 Instell Astronomy Softwares"
+Menu08Item="e.g. oaCapture, SkyChart, PlanetaryImager, ..."
+
+Menu09Tag="9 AiGO Upgrade"
+Menu09Item="AiGO Tools Upgrade"
+
+Menu00Tag="0 Exit"
+Menu00Item="Exit the program."
+
+
+while true
+do
+
+CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}'`
+CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`"**"
+CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+
+MenuText="\
+WiFi SSID     : \Z4$CURRENT_SSID\Zn\n\
+WiFi IP       : \Z4$CURRENT_WANIP\Zn\n\
+WiFi Password : \Z4$CURRENT_WPAPASS\Zn\n\
+LAN IP        : \Z4$CURRENT_LANIP\Zn\n\
+\nYou can use the UP/DOWN arrow keys, the number keys 0-9 to choose an option.\n\
+\nChoose the item"
+
+Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn"
+
+dialog --no-shadow --visit-items --colors --clear \
+--default-item "0 Exit" \
+--cancel-label "Exit" \
+--backtitle "$BackTitle" \
+--title "$MenuTitle" \
+--menu "$MenuText" \
+$MenuHeight $MenuWidth $MenuItemHeight \
+"$Menu01Tag" "$Menu01Item" \
+"$Menu02Tag" "$Menu02Item" \
+"$Menu03Tag" "$Menu03Item" \
+"$Menu04Tag" "$Menu04Item" \
+"$Menu05Tag" "$Menu05Item" \
+"$Menu06Tag" "$Menu06Item" \
+"$Menu07Tag" "$Menu07Item" \
+"$Menu08Tag" "$Menu08Item" \
+"$Menu09Tag" "$Menu09Item" \
+"$Menu00Tag" "$Menu00Item" \
+2>"${INPUT}"
+
+menuitem=$(<"${INPUT}")
+
+case $menuitem in
+	"$Menu01Tag")
+		# Wifi Options
+		aigo_config_wifi-options
+		;;
+	"$Menu02Tag")
+		# TODO: change_lan_ip
+		;;
+	"$Menu03Tag")
+		change_user_password
+		;;
+	"$Menu04Tag")
+		raspi-config
+		clear
+		;;
+	"$Menu05Tag")
+		;;
+	"$Menu06Tag")
+		;;
+	"$Menu07Tag")
+		# TODO: get_astrometry.net_index-files
+		;;
+	"$Menu08Tag")
+		# TODO: Instell Astronomy Softwares
+		aigo_config_install-astronomy-softwares
+		;;
+	"$Menu09Tag")
+		# TODO: upgrade_os , upgrade_kernel , upgrade_app
+		upgrade_aigo-tools
+		clear
+		echo "Re-execute aigo_config"
+		break
+		;;
+	"$Menu00Tag")
+		clear
+		echo "Exit"
+		break
+		;;
+	*)
+		clear
+		echo "Exit"
+		break
+		;;
+esac
+
+done
+
+[ -f $OUTPUT ] && rm -f $OUTPUT
+[ -f $INPUT ] && rm -f $INPUT
+
+#clear

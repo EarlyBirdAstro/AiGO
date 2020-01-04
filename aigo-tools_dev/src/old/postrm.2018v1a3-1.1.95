@@ -1,0 +1,68 @@
+#!/bin/sh
+
+type=$1
+echo "postrm="$type
+
+AIGO_TOOLS_DIR=/opt/aigo
+LOCAL_DIR=/usr/local
+ROOT_DIR=/
+UDEV_RULES_DIR=/lib/udev/rules.d
+AIGO_USER=aigo
+AIGO_HOME=/home/$AIGO_USER
+LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
+LXPANEL_CONF=panel
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
+
+rmfile() {
+	FNAME=$1
+	FDIR=$2
+	
+	rm -rf $FDIR/$FNAME
+}
+
+rmfile aigo_config $LOCAL_DIR/bin
+
+rmfile aigo_config.desktop $LOCAL_DIR/share/applications
+
+rmfile aigo.png $LOCAL_DIR/share/pixmaps
+
+rmfile aigo_look.sh $LOCAL_DIR/bin
+
+rmfile do_change_ssid.sh $LOCAL_DIR/bin
+
+#2017v1 - rmfile switch_libasicamera.sh $LOCAL_DIR/bin
+
+rmfile aigo_version $ROOT_DIR/etc
+
+rmfile 00-aigo.rules $UDEV_RULES_DIR
+
+rmfile z99-aigo.rules $UDEV_RULES_DIR
+
+rmfile aigo.conf $LOCAL_DIR/etc
+
+if [ x"$type" = x"remove" ] ; then
+	# Remove aigo_config from LXPanel
+	grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
+	RET=$?
+	if [ $RET -eq 0 ] ; then
+		cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postrm.bak
+		sed -i -z 's/    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop\n    }\n//' $LXPANEL_CONF_DIR/$LXPANEL_CONF
+
+	fi
+
+	# TODO: Reload LXPanel
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
+	sleep 1
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
+
+	# Remove autostart aigo_config
+	#2017v1 - rmfile aigo_config.desktop $AUTOSTART_DIR
+fi
+
+# Remove aigo_upgrade.sh
+#2017v1 - rmfile aigo_upgrade.sh $LOCAL_DIR/bin
+
+exit 0

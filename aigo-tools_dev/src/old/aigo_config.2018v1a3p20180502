@@ -1,16 +1,17 @@
 #!/bin/bash
 
 # Everything else needs to be run as root
-if [ $(id -u) -ne 0 ]; then
-  printf "Script must be run as root. Try 'sudo aigo_config'\n"
+BNAME=`basename $0`
+if [[ ${EUID} -ne 0 ]]; then
+  printf "Script must be run as root. Try 'sudo $BNAME'\n"
   exit 1
 fi
 
-VER=0.1.0
+VER=`dpkg -s aigo-tools | grep Version | awk -F ': ' '{print $2}'`
+
 AUTHOR="Contributed by Cheng-Chang Ho."
 
 AIGOUSER=`echo $HOME | awk -F '/' '{print $3}'`
-#VER=`sudo dpkg -l aigo-tools | grep "aigo-tools" | awk '{print $3}'`
 AIGO_VER=`cat /etc/aigo_version`
 BNAME=`basename $0`
 
@@ -144,6 +145,19 @@ change_user_password() {
 # passwd: password unchanged
 }
 
+upgrade_os-kernel() {
+	clear
+#	ASK_TO_REBOOT=1
+
+	# TODO: exec aigo_upgrade.sh
+	# return = 0 then Re-execute aigo_config
+	# return = 1 then Reboot
+	# return = other then Fail
+	# lxterminal exec aigo_update.sh
+#	lxterminal -e /usr/local/bin/aigo_upgrade.sh
+	/usr/local/bin/aigo_upgrade.sh
+}
+
 upgrade_aigo-tools() {
 	clear
 
@@ -173,9 +187,9 @@ upgrade_aigo-tools() {
 	fi
 }
 
-switch_libasicamera() {
-	switch_libasicamera.sh
-}
+#switch_libasicamera() {
+#	switch_libasicamera.sh
+#}
 
 # This code from raspi-config
 do_expand_rootfs() {
@@ -216,7 +230,7 @@ $PART_START
 p
 w
 EOF
-	ASK_TO_REBOOT=1
+#	ASK_TO_REBOOT=1
 
 	# now set up an init.d script
 	cat <<EOF > /etc/init.d/resize2fs_once &&
@@ -255,17 +269,25 @@ EOF
 	fi
 }
 
-do_finish() {
+do_reboot() {
 	if [ $ASK_TO_REBOOT -eq 1 ]; then
 		dialog --yesno "Would you like to reboot now?" 20 60
 		if [ $? -eq 0 ]; then # yes
 			sync
 			reboot
 		fi
+	else
+		dialog --msgbox "A reboot is needed" 20 60
+		sync
+		reboot
 	fi
+
 	return 0
 }
 
+do_raspi-config() {
+	sudo raspi-config
+}
 
 #=== Main ===#
 # Color
@@ -280,11 +302,12 @@ MenuTitle="\Zr\Z7 AiGO Software Configuration Tool (aigo_config) \Zn"
 #MenuTitle="\Z00\Z11\Z22\Z33\Z44\Z55\Z66\Z77\Zn AiGO Software Configuration Tool (aigo_config) \Zr\Z00\Zr\Z11\Zr\Z22\Zr\Z33\Zr\Z44\Zr\Z55\Zr\Z66\Zr\Z77\Zn"
 
 MenuText="You can use the UP/DOWN arrow keys, \n\
-the number keys 1-9 to choose an option.\n\
+the number keys 0-9 to choose an option.\n\
 Choose the item"
 
 MenuHeight=20
-MenuWidth=80
+#MenuWidth=80
+MenuWidth=100
 MenuItemHeight=10
 
 #MenuTag="n Change User ID"
@@ -315,18 +338,24 @@ MenuItem04="\Zr\Z7$CURRENT_LANIP\Zn - Coming Soon"
 MenuTag05="5 Change User Password"
 MenuItem05="\Zr\Z7admin123\Zn (select 5 & click <OK> to reset)"
 
-CURRENT_LIBASI_VER="none"
-MenuTag06="6 Switch libASI Version"
-MenuItem06="\Zr\Z7$CURRENT_LIBASI_VER\Zn"
+#CURRENT_LIBASI_VER="none"
+#MenuTag06="6 Switch libASI Version"
+#MenuItem06="\Zr\Z7$CURRENT_LIBASI_VER\Zn"
+
+MenuTag06="6 Get Astrometry fits"
+MenuItem06="Getting index files for Astrometry.net - Coming Soon"
 
 MenuTag07="7"
-MenuItem07=""
+#MenuTag07="7 OS & Kernel Upgrade"
+#MenuItem07="\Z1(Unstable!)\Zn Upgrade from 2017.v1 to Today"
 
-MenuTag08="8 Expand Filesystem"
-MenuItem08="Ensures that all of the SD card storage is available to the OS"
+#MenuTag08="8 Expand Filesystem"
+#MenuItem08="Ensures that all of the SD card storage is available to the OS"
+MenuTag08="8 raspi-config"
+MenuItem08="Raspberry Pi Software Configuration Tool"
 
-MenuTag09="9 Upgrade"
-MenuItem09="Upgrade (OS/Kernel/App): Now only aigo-tools"
+MenuTag09="9 AiGO Upgrade"
+MenuItem09="AiGO Tools Upgrade"
 
 MenuTag00="0 Exit"
 MenuItem00="Exit the program."
@@ -347,14 +376,14 @@ MenuItem03="\Zr\Z7$CURRENT_WANIP\Zn - Coming Soon"
 CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
 MenuItem04="\Zr\Z7$CURRENT_LANIP\Zn - Coming Soon"
 
-file -E /usr/lib/libASICamera.so
-RET=$?
-if [ $RET -eq 0 ] ; then
-	CURRENT_LIBASI_VER=`file -E /usr/lib/libASICamera.so | awk -F "libASICamera.so." '{print $3}'`
-else
-	CURRENT_LIBASI_VER="none"
-fi
-MenuItem06="\Zr\Z7$CURRENT_LIBASI_VER\Zn"
+#file -E /usr/lib/libASICamera.so
+#RET=$?
+#if [ $RET -eq 0 ] ; then
+#	CURRENT_LIBASI_VER=`file -E /usr/lib/libASICamera.so | awk -F "libASICamera.so." '{print $3}'`
+#else
+#	CURRENT_LIBASI_VER="none"
+#fi
+#MenuItem06="\Zr\Z7$CURRENT_LIBASI_VER\Zn"
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Exit" \
@@ -394,16 +423,24 @@ case $menuitem in
 		change_user_password
 		;;
 	"$MenuTag06")
-		switch_libasicamera
+#		switch_libasicamera
+		# TODO: get_astrometry.net_index-files
 		;;
 	"$MenuTag07")
+#		upgrade_os-kernel
+#		ASK_TO_REBOOT=0
+#		do_reboot
+#		clear
+#		echo "Please reboot"
 		;;
 	"$MenuTag08")
-		INTERACTIVE=False
-		do_expand_rootfs
-		do_finish
+		do_raspi-config
+#		INTERACTIVE=False
+#		do_expand_rootfs
+#		ASK_TO_REBOOT=1
+#		do_reboot
 		clear
-		echo "Please reboot"
+#		echo "Please reboot"
 		;;
 	"$MenuTag09")
 		# TODO: upgrade_os , upgrade_kernel , upgrade_app

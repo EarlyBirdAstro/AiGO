@@ -1,0 +1,6 @@
+#!/bin/sh
+
+rm -f ../deb_src
+cp -a `find . -type f | grep -v '^aigo' | grep -v 'old' | grep -v 'mk_deb-src'` ../deb_src
+
+

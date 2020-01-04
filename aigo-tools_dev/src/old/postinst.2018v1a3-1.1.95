@@ -1,0 +1,104 @@
+#!/bin/sh
+
+type=$1
+echo "postinst="$type
+
+AIGO_TOOLS_DIR=/opt/aigo
+LOCAL_DIR=/usr/local
+ROOT_DIR=/
+UDEV_RULES_DIR=/lib/udev/rules.d
+AIGO_USER=aigo
+AIGO_HOME=/home/$AIGO_USER
+LG_CONF_DIR=$AIGO_HOME/.config/GM_software
+LG_CONF=lin-guider.conf
+LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
+LXPANEL_CONF=panel
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
+
+chfile() {
+	FNAME=$1
+	FDIR=$2
+	OWN=$3
+	MOD=$4
+	
+	rm -rf $FDIR/$FNAME
+	mkdir -p $FDIR
+	cp -f $AIGO_TOOLS_DIR/$FNAME $FDIR
+	chown $OWN $FDIR/$FNAME
+	chmod $MOD $FDIR/$FNAME
+}
+
+rmfile() {
+	FNAME=$1
+	FDIR=$2
+	
+	rm -rf $FDIR/$FNAME
+}
+
+chfile aigo_config $LOCAL_DIR/bin root.root 755
+chfile aigo_config_wifi-options $LOCAL_DIR/bin root.root 755
+chfile aigo_config_install-astronomy-softwares $LOCAL_DIR/bin root.root 755
+
+chfile aigo_config.desktop $LOCAL_DIR/share/applications root.root 644
+
+chfile aigo.png $LOCAL_DIR/share/pixmaps root.root 644
+
+chfile aigo_look.sh $LOCAL_DIR/bin root.root 755
+
+chfile do_change_ssid.sh $LOCAL_DIR/bin root.root 755
+
+#2017v1 - chfile switch_libasicamera.sh $LOCAL_DIR/bin root.root 755
+#2018v1a2 - rmfile switch_libasicamera.sh $LOCAL_DIR/bin
+
+chfile aigo_version $ROOT_DIR/etc root.root 644
+
+chfile 00-aigo.rules $UDEV_RULES_DIR root.root 644
+
+chfile z99-aigo.rules $UDEV_RULES_DIR root.root 644
+
+chfile aigo.conf $LOCAL_DIR/etc root.root 644
+
+#2017v1 - chfile $LG_CONF $LG_CONF_DIR $AIGO_USER.$AIGO_USER 664
+#2017v1 -  GM_software aigo.aigo 775
+#2017v1 - chown $AIGO_USER.$AIGO_USER $LG_CONF_DIR
+#2017v1 - chmod 775 $LG_CONF_DIR
+
+# Add aigo_config to LXPanel
+#2017v1 - grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
+#2017v1 - RET=$?
+#2017v1 - if [ $RET -eq 1 ] ; then
+#2017v1 -	cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postinst.bak
+#2017v1 -	sed -i -z 's/lxterminal.desktop/lxterminal.desktop\n    }\n    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop/' $LXPANEL_CONF_DIR/$LXPANEL_CONF
+#2017v1 - fi
+
+# Remove OpenSkyImager
+#2018v1a2 - rm -rf /usr/local/bin/OpenSkyImager
+#2018v1a2 - rm -f /usr/share/applications/OpenSkyImager.desktop
+#2018v1a2 - grep "OpenSkyImager.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
+#2018v1a2 - RET=$?
+#2018v1a2 - if [ $RET -eq 0 ] ; then
+#2018v1a2 - 	cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postinst.bak
+#2018v1a2 - 	sed -i -z 's/    Button {\n      id=menu:\/\/applications\/Education\/OpenSkyImager.desktop\n    }\n//' $LXPANEL_CONF_DIR/$LXPANEL_CONF
+#2018v1a2 - fi
+
+# Restart LXPanel
+#2018v1a2 - sleep 0.25
+#2018v1a2 - su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
+#2018v1a2 - sleep 0.25
+#2018v1a2 - #su $AIGO_USER -c 'find ~/.cache/menus -name '*' -type f -print0 | xargs -0 rm'
+#2018v1a2 - su $AIGO_USER -c 'rm -f ~/.cache/menus/*'
+#2018v1a2 - sleep 0.25
+#2018v1a2 - su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
+#2018v1a2 - sleep 0.25
+#2018v1a2 - su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
+
+# Add autostart aigo_config
+#2017v1 - chfile aigo_config.desktop $AUTOSTART_DIR $AIGO_USER.$AIGO_USER 644
+
+# Add aigo_upgrade.sh
+#2017v1 - chfile aigo_upgrade.sh $LOCAL_DIR/bin root.root 755
+#2018v1a2 - rmfile aigo_upgrade.sh $LOCAL_DIR/bin
+
+chmod +x $AIGO_TOOLS_DIR/*.sh
+
+exit 0
