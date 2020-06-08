@@ -253,7 +253,7 @@ Menu06Tag="6"
 Menu07Tag="7 Get Astrometry fits"
 Menu07Item="Getting index files for Astrometry.net \Z1(Coming Soon)\Zn"
 
-Menu08Tag="8 Instell Astronomy Softwares"
+Menu08Tag="8 Install Astronomy Softwares"
 Menu08Item="e.g. oaCapture, SkyChart, PlanetaryImager, ..."
 
 Menu09Tag="9 AiGO Upgrade"
@@ -325,7 +325,6 @@ case $menuitem in
 		# TODO: get_astrometry.net_index-files
 		;;
 	"$Menu08Tag")
-		# TODO: Instell Astronomy Softwares
 		aigo_config_install-astronomy-softwares
 		;;
 	"$Menu09Tag")
