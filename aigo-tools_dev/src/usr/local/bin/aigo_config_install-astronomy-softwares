@@ -18,7 +18,7 @@ fi
 
 # TODO: check disk space
 
-VER=`dpkg -s aigo-tools | grep Version | awk -F ': ' '{print $2}'`
+VER=`dpkg -s aigo-tools | grep Version | awk -F ': ' '{print $2}' > /dev/null 2>&1`
 
 AUTHOR="Contributed by Cheng-Chang Ho."
 
@@ -72,6 +72,22 @@ inst_skychart() {
 	fi
 }
 
+inst_firecapture() {
+        apt-get update | tee $LOG_DIR/apt-update_firecapture.log
+
+        apt install --reinstall firecapture -y | tee $LOG_DIR/inst_firecapture.log
+
+        apt clean
+}
+
+inst_lin-guider-starspi() {
+        apt-get update | tee $LOG_DIR/apt-update_lin-guider-starspi.log
+
+        apt install --reinstall lin-guider-starspi -y | tee $LOG_DIR/inst_lin-guider-starspi.log
+
+        apt clean
+}
+
 
 #=== Main Menu ===#
 # Color
@@ -93,7 +109,11 @@ Menu01Tag="1 oaCapture"
 
 Menu02Tag="2 Skychart"
 
-Menu03Tag="3"
+Menu03Tag="3 FireCapture"
+
+Menu04Tag="4 Lin-guider StarsPi"
+
+Menu05Tag="5"
 
 Menu00Tag="0 Back"
 Menu00Item="Back to main menu."
@@ -115,18 +135,39 @@ LAN IP        : \Z4$CURRENT_LANIP\Zn\n\
 \nChoose the item"
 
 # check is installed
-Installed01=`dpkg -s oacapture | grep Version`
+`dpkg -s oacapture > /dev/null 2>&1`
 if [ $? -eq 1 ] ; then
 #	Installed01="\Zr\Z1QHY5.HEX problem\Zn"
-	Installed01="Not Installed"
+	Menu01Item="\Zr\Z0Not Installed\Zn - Planetary imaging application for Linux and MacOS."
+else
+	Installed01=`dpkg -s oacapture | grep Version | awk -F ': ' '{print $2}'`
+	Menu01Item="\Zr\Z4$Installed01\Zn - Planetary imaging application for Linux and MacOS."
 fi
-Menu01Item="\Zr\Z7$Installed01\Zn - Planetary imaging application for Linux and MacOS."
 
-Installed02=`dpkg -s skychart | grep Version`
+`dpkg -s skychart > /dev/null 2>&1`
 if [ $? -eq 1 ] ; then
-	Installed02="Not Installed"
+	Menu02Item="\Zr\Z0Not Installed\Zn - Cartes du Ciel planetarium software"
+else
+	Installed02=`dpkg -s skychart | grep Version | awk -F ': ' '{print $2}'`
+	Menu02Item="\Zr\Z4$Installed02\Zn - Cartes du Ciel planetarium software"
 fi
-Menu02Item="\Zr\Z7$Installed02\Zn - Skychart / Cartes du Ciel planetarium software"
+
+`dpkg -s firecapture > /dev/null 2>&1`
+if [ $? -eq 1 ] ; then
+	Menu03Item="\Zr\Z0Not Installed\Zn - THE LEADING PLANETARY CAPTURE TOOL"
+else
+	Installed03=`dpkg -s firecapture | grep Version | awk -F ': ' '{print $2}'`
+	Menu03Item="\Zr\Z4$Installed03\Zn - THE LEADING PLANETARY CAPTURE TOOL"
+fi
+
+`dpkg -s lin-guider-starspi > /dev/null 2>&1`
+if [ $? -eq 1 ] ; then
+	Menu04Item="\Zr\Z0Not Installed\Zn - Lin_guider StarsPi patch"
+else
+	Installed04=`dpkg -s lin-guider-starspi | grep Version | awk -F ': ' '{print $2}'`
+	Menu04Item="\Zr\Z4$Installed04\Zn - Lin_guider StarsPi patch"
+fi
+
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Back" \
@@ -138,6 +179,8 @@ $MenuHeight $MenuWidth $MenuItemHeight \
 "$Menu01Tag" "$Menu01Item" \
 "$Menu02Tag" "$Menu02Item" \
 "$Menu03Tag" "$Menu03Item" \
+"$Menu04Tag" "$Menu04Item" \
+"$Menu05Tag" "$Menu05Item" \
 "$Menu00Tag" "$Menu00Item" \
 2>"${INPUT}"
 
@@ -146,13 +189,21 @@ menuitem=$(<"${INPUT}")
 case $menuitem in
         "$Menu01Tag")
                 inst_oacapture
-				break
+                break
                 ;;
         "$Menu02Tag")
                 inst_skychart
-				break
+                break
                 ;;
         "$Menu03Tag")
+                inst_firecapture
+                break
+                ;;
+        "$Menu04Tag")
+                inst_lin-guider-starspi
+                break
+                ;;
+        "$Menu05Tag")
                 ;;
         "$Menu00Tag")
                 clear
