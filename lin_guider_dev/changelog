@@ -1,2 +1,5 @@
+* 2020-08-29 Cheng-Chang Ho <earlybird.astro@gmail.com> 4.2.0
+- Porting to Ubuntu 20.04 arm64
+
 * 2016-10-27 Cheng-Chang Ho <earlybird.astro@gmail.com> 4.1.0
 - release
