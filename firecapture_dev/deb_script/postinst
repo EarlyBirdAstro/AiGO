@@ -1,0 +1,18 @@
+#!/bin/sh
+
+echo "postinst="$1
+
+AIGO_USER=aigo
+
+chown -R $AIGO_USER.$AIGO_USER /opt/FireCapture
+chmod 755 /opt/FireCapture/start.sh
+chmod 755 /opt/FireCapture/run.sh
+chmod 755 /opt/FireCapture/jre/bin/java
+
+chown $AIGO_USER.$AIGO_USER /usr/share/applications/firecapture.desktop
+chmod 644 /usr/share/applications/firecapture.desktop
+
+chown $AIGO_USER.$AIGO_USER /usr/share/pixmaps/firecapture.png
+chmod 644 /usr/share/pixmaps/firecapture.png
+
+exit 0

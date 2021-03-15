@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "postinst="$1
+
+chown root.root /usr/bin/lin_guider-starspi
+chmod 755 /usr/bin/lin_guider-starspi
+
+chown root.root /usr/share/applications/lin_guider-starspi.desktop
+chmod 644 /usr/share/applications/lin_guider-starspi.desktop
+
+chown root.root /usr/share/pixmaps/lin_guider-starspi.png
+chmod 644 /usr/share/pixmaps/lin_guider-starspi.png
+
+exit 0

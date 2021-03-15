@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="StarfruitPi" default="deb" basedir=".">
+    <tstamp>
+	    <format property="TODAY_TW" pattern="yyyyMMdd" locale="en,TW"/>
+    </tstamp>
+
+    <property environment="env"/>
+	<property name="package_name" value="lin-guider-starspi"/>
+	<property name="package_version" value="5.0.1"/>
+	<property name="debian_version" value="0.90ubuntu~20.04"/>
+	<property name="section" value="science"/>
+	<property name="priority" value="optional"/>
+	<property name="architecture" value="arm64"/>
+	<property name="deb_depends" value="libusb-1.0-0, libqtgui4|libqt5gui5, libqtcore4|libqt5core5a, libqt5widgets5"/>
+	<property name="maintainer" value="Cheng-Chang Ho"/>
+	<property name="maintainer_email" value="earlybird.astro@gmail.com"/>
+	<property name="brief" value="Lin-guider is an astronomical autoguiding program for Linux.  StarsPi uses the Lin-guider to achieve the guiding."/>
+	<property name="description" value=" It supports Philips, Logitech, uvc webcams, QHY5, QHY6, DSI2PRO, QHY5L-II-M, QHY5L-II-C, QHY5-II, ATIK, Starlight Xpress, ZWO ASI astrocams for video and FTDI chip-based, parallel port-based (LPT), GPIO-based, GPUSB devices, Nexstar-protocol based and QHY5, QHY6, QHY5L-II-M, QHY5L-II-C, QHY5-II, ATIK, Starlight Xpress, ZWO ASI astrocams for pulse guiding."/>
+	
+	<property name="repository" value="http://repository.transtep.com/repository"/>
+	<property name="lib.dir" value="lib"/>
+	<property name="dist.dir" value="dist"/>
+	<property name="plugins" value="plugins"/>
+	<property name="deb_root" value="deb_root"/>
+	<property name="deb_script" value="deb_script"/>
+    <property name="deb_conf" value="deb_conf"/>
+	
+	<!-- ================================================================ -->
+    <!--                       tagert: prepare                            -->
+    <!-- ================================================================ -->
+	<target name="prepare">
+	    <mkdir dir="${lib.dir}"/>
+		<!-- deb library -->
+		<get src="${repository}/thirdparty/ant/ant-deb-0.0.1.jar" 
+		    dest="${lib.dir}/ant-deb-0.0.1.jar" usetimestamp="true" verbose="true"/>
+		<!-- svnant library -->
+		<mkdir dir="${lib.dir}/svnant"/>
+		<get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/antlr-runtime-3.4.jar"
+            dest="${lib.dir}/svnant/antlr-runtime-3.4.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/jna-4.1.0.jar" 
+            dest="${lib.dir}/svnant/jna-4.1.0.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/sequence-library-1.0.3.jar" 
+            dest="${lib.dir}/svnant/sequence-library-1.0.3.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/sqljet-1.1.10.jar" 
+            dest="${lib.dir}/svnant/sqljet-1.1.10.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/svnant-1.3.jar" 
+            dest="${lib.dir}/svnant/svnant-1.3.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/svnClientAdapter-1.3.jar" 
+            dest="${lib.dir}/svnant/svnClientAdapter-1.3.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnant-1.3.1/lib/svnjavahl.jar" 
+            dest="${lib.dir}/svnant/svnjavahl.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/svnkit-1.8.10.jar" 
+            dest="${lib.dir}/svnant/svnkit-1.8.10.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/svnkit-cli-1.8.10.jar" 
+            dest="${lib.dir}/svnant/svnkit-cli-1.8.10.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/svnkit-javahl16-1.8.10.jar" 
+            dest="${lib.dir}/svnant/svnkit-javahl16-1.8.10.jar" verbose="true" usetimestamp="true" />
+        <get src="${repository}/thirdparty/ant/svnkit-1.8.10/lib/trilead-ssh2-1.0.0-build219.jar" 
+            dest="${lib.dir}/svnant/trilead-ssh2-1.0.0-build219.jar" verbose="true" usetimestamp="true" />
+	</target>
+	
+	<!-- ================================================================ -->
+    <!--                       tagert: revision                           -->
+    <!-- ================================================================ -->
+    <target name="revision">
+        <path id="svnant.libs.path">
+            <fileset dir="${lib.dir}/svnant">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+        <!-- Load SvnAnt -->
+        <typedef resource="org/tigris/subversion/svnant/svnantlib.xml" classpathref="svnant.libs.path" />
+
+        <!-- find head and last changed revision, amongst other things. -->
+        <svn>
+            <status path="${basedir}" revisionProperty="svn.revision"
+                    lastChangedRevisionProperty="svn.lastChangedRevision" />
+        </svn>
+        <echo>Revision: ${svn.revision}</echo>
+        <echo>Last Changed Revision: ${svn.lastChangedRevision}</echo>
+    </target>
+	
+	<!-- ================================================================ -->
+    <!--                       tagert: tar                                -->
+    <!-- ================================================================ -->
+	<target name="tar" depends="revision">
+		<mkdir dir="${dist.dir}"/>
+<!--
+		<tar destfile="${dist.dir}/${package_name}_${package_version}.${TODAY_TW}-r${svn.lastChangedRevision}.tar"
+-->
+		<tar destfile="${dist.dir}/${package_name}_${package_version}.${TODAY_TW}.tar"
+     		basedir="${deb_root}"
+		/>
+<!--
+		<gzip destfile="${dist.dir}/${package_name}_${package_version}.${TODAY_TW}-r${svn.lastChangedRevision}.tar.tar.gz"
+-->
+		<gzip destfile="${dist.dir}/${package_name}_${package_version}.${TODAY_TW}.tar.tar.gz" 
+		    src="${dist.dir}/${package_name}_${package_version}.${TODAY_TW}.tar"/>
+	</target>
+	
+	<!-- ================================================================ -->
+    <!--                       tagert: deb                                -->
+    <!-- ================================================================ -->
+	<target name="deb" depends="prepare,revision">
+		<taskdef name="deb" classname="com.googlecode.ant_deb_task.Deb" classpath="${lib.dir}/ant-deb-0.0.1.jar"/>
+		<mkdir dir="${dist.dir}"/>
+		<deb todir="${dist.dir}" package="${package_name}" section="${section}" priority="${priority}" architecture="${architecture}" depends="${deb_depends}" postinst="${deb_script}/postinst" postrm="${deb_script}/postrm">
+<!--
+            <version upstream="${package_version}-r${svn.lastChangedRevision}" debian="${debian_version}"/>
+-->
+            <version upstream="${package_version}" debian="${debian_version}"/>
+            <maintainer name="${maintainer}" email="${maintainer_email}"/>
+            <description synopsis="${brief}">${description}</description>
+            <tarfileset dir="${deb_root}" prefix=""/>
+            <conffiles dir="${deb_conf}" prefix="" filemode="644">
+                <include name="*"/>
+            </conffiles>
+        </deb>
+	</target>
+
+	<!-- ================================================================ -->
+    <!--                       tagert: clean                              -->
+    <!-- ================================================================ -->
+	<target name="clean">
+		<delete dir="${dist.dir}" includeemptydirs="true"/>
+		<delete dir="${lib.dir}" includeemptydirs="true"/>
+	</target>
+</project> 

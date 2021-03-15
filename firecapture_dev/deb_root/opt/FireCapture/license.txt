@@ -1,0 +1,37 @@
+FireCapture License Agreement
+==============================
+
+Except where otherwise noted, all of the documentation and software 
+included in the FireCapture package is copyrighted by Torsten Edelmann.
+
+Copyright (C) 2009-2017 Torsten Edelmann. All rights reserved.
+
+This software is provided "as-is," without any express or implied warranty. 
+In no event shall the author be held liable for any damages arising from 
+the use of this software.
+
+Permission is granted to anyone to use this software for private purpose. 
+
+Commercial use of this software is prohibited. Linking to the FireCapture website 
+for commercial purposes (e.g. camera distributors, selling cameras in general) 
+is also prohibited without the author's permission. 
+
+You may not redistribute or alter this software without the written permission 
+of the author. You shall not reverse engineer, decompile, disassemble or create 
+any kind of derivative works based on the Software.
+
+Image credit for splashscreen images: NASA, ESA, Hubble Heritage Team (STScI), 
+SST/Royal Swedish Academy of Sciences.
+
+This software uses some icons by Yusuke Kamiyamane, licensed under a Creative Commons
+Attribution 3.0 License.
+
+If you have any questions or suggestions regarding this software you may
+contact me at: firecapture@wonderplanets.de
+
+Clear Skies wherever you enjoy watching the Nightsky !
+
+Torsten Edelmann
+http://www.firecapture.de
+http://www.wonderplanets.de/
+firecapture@wonderplanets.de

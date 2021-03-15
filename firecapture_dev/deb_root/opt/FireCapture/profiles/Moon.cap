@@ -1,0 +1,17 @@
+name=Moon
+shortname=Moon
+planet=10
+alignment=Planet
+x=0
+y=0
+width=659
+height=492
+cutoutWidth=324
+cutoutHeight=278
+alignmentTreshold=20
+noiseMaskDiameter=0
+useTimestamp=false
+lastFilter=L
+stackFrames=0
+startWithMaxSize=false
+mirroredFITS=false

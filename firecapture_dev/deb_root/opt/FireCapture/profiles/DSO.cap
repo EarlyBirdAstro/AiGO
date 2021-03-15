@@ -1,0 +1,17 @@
+name=DSO
+shortname=DSO
+planet=12
+alignment=DSO
+x=0
+y=0
+width=1280
+height=958
+cutoutWidth=300
+cutoutHeight=300
+alignmentTreshold=20
+noiseMaskDiameter=0
+useTimestamp=false
+lastFilter=B
+stackFrames=0
+startWithMaxSize=false
+mirroredFITS=false

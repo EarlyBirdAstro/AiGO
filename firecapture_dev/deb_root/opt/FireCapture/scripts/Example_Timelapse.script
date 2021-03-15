@@ -1,0 +1,11 @@
+// create a timelapse AVI every day the whole week
+// use 1s exposure and take one frame every minute
+
+SetFiletype AVI
+SetTimelapseDelay 60
+SetExposure 1000
+Loop 7
+StartCapture 1440m
+EndLoop
+
+

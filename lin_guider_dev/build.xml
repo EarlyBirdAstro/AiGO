@@ -8,8 +8,8 @@
 
     <property environment="env"/>
 	<property name="package_name" value="lin-guider"/>
-	<property name="package_version" value="4.2.0"/>
-	<property name="debian_version" value="1.90ubuntu~20.04"/>
+	<property name="package_version" value="5.0.1"/>
+	<property name="debian_version" value="0.90ubuntu~20.04"/>
 	<property name="section" value="science"/>
 	<property name="priority" value="optional"/>
 	<property name="architecture" value="arm64"/>
@@ -25,7 +25,7 @@
 	<property name="plugins" value="plugins"/>
 	<property name="deb_root" value="deb_root"/>
 	<property name="deb_script" value="deb_script"/>
-        <property name="deb_conf" value="deb_conf"/>
+    <property name="deb_conf" value="deb_conf"/>
 	
 	<!-- ================================================================ -->
     <!--                       tagert: prepare                            -->

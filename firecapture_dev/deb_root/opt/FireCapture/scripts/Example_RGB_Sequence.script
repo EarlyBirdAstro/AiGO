@@ -1,0 +1,11 @@
+// capture 10 full RGB sequences 
+// R with 120s, G with 5000 frames and B with 5min
+
+Loop 10
+SetFilter R
+StartCapture 120s
+SetFilter G
+StartCapture 5000f
+SetFilter B
+StartCapture 5m
+EndLoop

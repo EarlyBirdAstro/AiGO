@@ -1,0 +1,17 @@
+name=Venus
+shortname=Ven
+planet=2
+alignment=Planet
+x=0
+y=0
+width=300
+height=300
+cutoutWidth=300
+cutoutHeight=300
+alignmentTreshold=20
+noiseMaskDiameter=0
+useTimestamp=false
+lastFilter=L
+stackFrames=0
+startWithMaxSize=false
+mirroredFITS=false

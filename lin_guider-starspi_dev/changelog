@@ -1,0 +1,9 @@
+* 2021-03-13 Cheng-Chang Ho <earlybird.astro@gmail.com> 5.0.1-0.90
+- offical source + StarsPi Patch rebuild for Ubuntu 20.04 arm64
+- fixed include/maindef.h VERSION to "5.0.1"
+
+* 2017-08-17 Cheng-Chang Ho <earlybird.astro@gmail.com> 4.2.0-0.90
+- Lin-guider 4.2.0 + StarsPi Patch
+
+* 2016-10-27 Cheng-Chang Ho <earlybird.astro@gmail.com> 4.1.0
+- release

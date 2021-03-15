@@ -1,0 +1,4307 @@
+diff -Nur lin_guider_pack/lin_guider/include/lin_guider.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/lin_guider.h
+--- lin_guider_pack/lin_guider/include/lin_guider.h	2019-12-13 19:27:05.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/lin_guider.h	2021-03-10 22:46:32.156301200 +0800
+@@ -42,7 +42,11 @@
+ #include "server.h"
+ #include "settings.h"
+ #include "timer.h"
+-
++#include "starspi_server.h"
++#include "starspi_guider.h"
++#include "starspi_calibration.h"
++#include "starspi_dslr.h"
++#include "starspi_camera.h"
+ 
+ class drawer_delegate;
+ class params;
+@@ -56,6 +60,12 @@
+ friend class guider;
+ friend class rcalibration;
+ friend class mrecorder;
++friend class starspi_server;
++friend class starspi_guider;
++friend class starspi_calibration;
++friend class starspi_dslr;
++friend class starspi_camera;
++
+ friend class drawer_delegate;
+ 
+ public:
+@@ -64,6 +74,7 @@
+ 
+ 
+     void lock_toolbar( bool lock );
++    void setGuiderSquareXY(int x, int y);
+     // test stuff
+ 
+ protected slots:
+@@ -93,6 +104,7 @@
+ protected:
+ 	void showEvent ( QShowEvent * event );
+ 	void closeEvent( QCloseEvent *event );
++	void flushAndPowerOff(bool is_restart);
+ 
+ private:
+ 	typedef struct
+@@ -114,6 +126,13 @@
+ 	mrecorder *recorder_wnd;
+ 	settings *settings_wnd;
+ 	about *about_wnd;
++	starspi_server *m_starspi_server;
++	starspi_guider *m_starspi_guider;
++	starspi_calibration *m_starspi_calibration;
++	starspi_dslr *m_starspi_dslr;
++	starspi_camera *m_starspi_camera;
++	bool m_remote_shutdown;
++	bool m_remote_restart;
+ 
+ 	lg_math::cgmath *m_math;
+ 
+diff -Nur lin_guider_pack/lin_guider/include/starspi_calibration.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_calibration.h
+--- lin_guider_pack/lin_guider/include/starspi_calibration.h	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_calibration.h	2021-03-10 23:13:11.084756500 +0800
+@@ -0,0 +1,91 @@
++/*
++ * starspi_calibration.h
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef STARSPI_CALIBRATION_H
++#define STARSPI_CALIBRATION_H
++
++#include <pthread.h>
++#include "gmath.h"
++
++using namespace lg_math;
++
++class lin_guider;
++
++class starspi_calibration
++{
++    private:
++        /* Used to acces the main window */
++        lin_guider *m_parent;
++        lg_math::cgmath *m_math;
++
++        int m_calibration_drift_time;
++        int m_reticle_calib_status;
++
++        /* The thread which handles the calibration */
++        pthread_t m_reticle_calib_thread;
++        pthread_mutex_t m_calib_status_lock;
++
++        /* Inherited from rcalibration */
++        int  auto_drift_time;
++        double start_x1, start_y1;
++        double end_x1, end_y1;
++        double start_x2, start_y2;
++        double end_x2, end_y2;
++
++        /* Implementation of the thread */
++        static void* twoAxisReticleCalibrationThread(void *param);
++        void twoAxisReticleCalibration();
++        void setReticleCalibrationStatus(int status);
++
++        bool checkStartPosition();
++
++    public:
++
++        enum calibration_states
++        {
++            UNCALIBRATED = 0,
++            STARTED,
++            RA_DRIFTING,
++            RA_RUNNING_BACK,
++            DEC_DRIFTING,
++            DEC_RUNNING_BACK,
++            DONE,
++            REJECTED,
++            EDGE_TOO_CLOSE
++        };
++
++        starspi_calibration(lin_guider *parentInstance);
++        ~starspi_calibration();
++
++        void setMath(lg_math::cgmath *math);
++
++        /* Dark calibration related stuff */
++        void startDarkCalibration(int no_frames);
++        bool getDarkCalibrationStatus();
++        void setUseDarkCalibration(bool state);
++
++        /* Reticle calibration related stuff */
++        void startReticleCalibration(int driftTime);
++        int  getReticleCalibrationStatus();
++};
++
++#endif
+diff -Nur lin_guider_pack/lin_guider/include/starspi_camera.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_camera.h
+--- lin_guider_pack/lin_guider/include/starspi_camera.h	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_camera.h	2021-03-10 22:26:34.264888500 +0800
+@@ -0,0 +1,78 @@
++/*
++ * starspi_camera.h
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef STARSPI_CAMERA_H
++#define STARSPI_CAMERA_H
++
++#include <pthread.h>
++#include "video.h"
++
++class lin_guider;
++
++class starspi_camera
++{
++    private:
++
++        enum constants
++        {
++            IMG_WIDTH = 640,
++            IMG_HEIGHT = 480,
++            PIXEL_DATA_SIZE = 4,
++            VGA_RES = 1,
++            QVGA_RES = 0,
++            VGA_SIZE = 307200,
++            QVGA_SIZE = 76800
++        };
++
++        /* Used to acces the main window */
++        lin_guider *m_parent;
++
++        /* Set/get exposure and gain */
++        video_drv::captureparams_t m_capture_params;
++
++        /* Mutex to protect the image data */
++        pthread_mutex_t m_img_resource_lock;
++
++        /* Store the image from the video driver */
++        char m_image_buffer[IMG_WIDTH*IMG_HEIGHT*PIXEL_DATA_SIZE];
++
++    public:
++
++        starspi_camera(lin_guider *parentInstance);
++        ~starspi_camera();
++
++        /* Called by the main windows to transfer the image */
++        void transferImage(unsigned char* imageBuffer);
++
++        int getConvertedImage(char size, char *output);
++
++        /* Get camera parameters */
++        int getMaxExposure();
++        int getMaxGain();
++
++        /* Set camera parameters */
++        void setCameraExposureGain(int cameraExposure, int cameraGain);
++
++        void setMaxFrameTime(char seconds);
++};
++
++#endif
+diff -Nur lin_guider_pack/lin_guider/include/starspi_dslr.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_dslr.h
+--- lin_guider_pack/lin_guider/include/starspi_dslr.h	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_dslr.h	2021-03-10 22:26:34.272889800 +0800
+@@ -0,0 +1,68 @@
++/*
++ * starspi_dslr.h
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef STARSPI_DSLR_H
++#define STARSPI_DSLR_H
++
++#include "gphoto2/gphoto2-camera.h"
++
++class lin_guider;
++
++class starspi_dslr
++{
++    private:
++
++        /* Used to acces the main window */
++        lin_guider *m_parent;
++
++        /* Camera manipulation */
++        Camera    *m_camera;
++        Camera  *m_camera_list[8];
++        GPContext *m_context;
++        char m_camera_connected;
++        int m_camera_count;
++        CameraList	*list;
++
++        GPPortInfoList		*portinfolist;
++        CameraAbilitiesList	*abilities;
++
++        static void errorFunc (GPContext *context, const char *format, va_list args, void *data);
++        static void messageFunc (GPContext *context, const char *format, va_list args, void *data);
++
++        int lookupWidget(CameraWidget*widget, const char *key, CameraWidget **child);
++        int getConfigValueString (Camera *camera, const char *key, char **str, GPContext *context);
++        int setConfigValueString (Camera *camera, const char *key, const char *val, GPContext *context);
++
++        int openCamera(Camera **camera, const char *model, const char *port, GPContext *context);
++        void closeCameras();
++
++    public:
++
++        starspi_dslr(lin_guider *parentInstance);
++        ~starspi_dslr();
++
++        void openShutter();
++        void closeShutter();
++        int fillCameraInfo(char *buffer);
++};
++
++#endif
+diff -Nur lin_guider_pack/lin_guider/include/starspi_guider.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_guider.h
+--- lin_guider_pack/lin_guider/include/starspi_guider.h	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_guider.h	2021-03-10 23:12:57.977675800 +0800
+@@ -0,0 +1,82 @@
++/*
++ * starspi_guider.h
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef STARSPI_GUIDER_H
++#define STARSPI_GUIDER_H
++
++#include <pthread.h>
++#include "gmath.h"
++
++using namespace lg_math;
++
++class lin_guider;
++
++class starspi_guider
++{
++    private:
++
++        /* Used to acces the main window */
++        lin_guider *m_parent;
++        lg_math::cgmath *m_math;
++        io_drv::cio_driver_base *m_driver;
++
++        pthread_mutex_t m_guiding_mutex;
++        bool m_is_guiding;
++
++        pthread_mutex_t m_driftdata_mutex;
++        int m_drift_RA;
++        int m_drift_DEC;
++        int m_RMS_RA;
++        int m_RMS_DEC;
++
++        int m_guiding_stability;
++        int m_quality_rate;
++
++        void set_is_guiding(bool state);
++        bool get_is_guiding();
++
++    public:
++
++        starspi_guider(lin_guider *parentInstance, io_drv::cio_driver_base *driver);
++        ~starspi_guider();
++
++        void startGuiding();
++        void stopGuiding();
++        bool isGuiding();
++
++        void setSquareSize(int size);
++        void setGuideRateAndThreshold(int rate, int threshold);
++        void setCorrectionDirections(int ra, int dec);
++        void setAccumulationFrames(int ra, int dec);
++        void setProportionalGains(int ra, int dec);
++        void setIntegralGains(int ra, int dec);
++        void setMaximumPulses(int ra, int dec);
++        void setMinimumPulses(int ra, int dec);
++        void getDriftData(int *raDrift, int *decDrift, int *raRMS, int* decRMS);
++
++        void setMath(lg_math::cgmath *math);
++
++        /* Called for every frame by the main window */
++        void guiderCallback();
++};
++
++#endif
+diff -Nur lin_guider_pack/lin_guider/include/starspi_server.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_server.h
+--- lin_guider_pack/lin_guider/include/starspi_server.h	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/starspi_server.h	2021-03-10 22:26:34.268920500 +0800
+@@ -0,0 +1,145 @@
++/*
++ * starspi_server.h
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef STARSPI_SERVER_H
++#define STARSPI_SERVER_H
++
++/* Create and manipulate threads, needed for networking */
++#include <pthread.h>
++#include <sys/types.h>
++#include <stdint.h>
++#include <QObject>
++
++#include "video.h"
++
++#pragma pack(1)
++struct header
++{
++    uint16_t magicNumber;
++    uint8_t  reserved;
++    uint8_t  cmdWord;
++    uint32_t length;
++} __attribute__ ((aligned (1)));
++#pragma pack()
++
++class lin_guider;
++
++class starspi_server : public QObject
++{
++    Q_OBJECT
++
++    private:
++
++        enum constants
++        {
++            MAGIC_NUMBER = 0xF55F,
++            STARSPI_PORT_NUMBER = 5555,
++            HEADER_SIZE = 8,
++            RX_BUFFER_SIZE = 32,
++            IMG_WIDTH = 640,
++            IMG_HEIGHT = 480,
++            PIXEL_DATA_SIZE = 4,
++            VGA_RES = 1,
++            QVGA_RES = 0,
++            VGA_SIZE = 307200,
++            QVGA_SIZE = 76800
++        };
++
++        /* Used to acces the main window */
++        lin_guider *m_parent;
++
++        /* The thread which handles the communication */
++        pthread_t m_network_thread;
++
++        /* Device status variables */
++        bool m_camera_online;
++        bool m_driver_online;
++        pthread_mutex_t m_hw_status_resource_lock;
++
++        /* Implementation of the thread */
++        static void* networkThread(void *param);
++
++        /* Set parameters of the socket connection */
++        void setSocketOptions(int socket);
++
++        /* Elementary read from socket */
++        char readFromSocket(int socket, char buffer[], int bytesToRead);
++
++        /* verify signature */
++        bool checkHeader(header *headerPtr);
++
++        /* Helper for byte manipulation */
++        static void int2ByteArray(int val1, int val2, char dst[]);
++        static void byteArray2Int(char src[], int *val1, int *val2);
++
++    public:
++
++        /* These are the currently supported commands. List may be extended */
++        enum command_words
++        {
++            EMPTY_COMMAND = 0,
++            GET_IMAGE,
++            GET_SCOPE_PARAMS,
++            SET_SCOPE_PARAMS,
++            GET_CAMERA_PARAMS,
++            SET_CAMERA_PARAMS,
++            GET_CAMERA_MAX_VALUES,
++            GET_SQUARE_POSITION,
++            SET_SQUARE_POSITION,
++            START_DARK_CALIBRATION,
++            GET_DARK_CALIBRATION_STATUS,
++            START_RETICLE_CALIBRATION,
++            GET_RETICLE_CALIBRATION_STATUS,
++            GET_SQUARE_SIZE,
++            SET_SQUARE_SIZE,
++            SET_GUIDE_RATE_AND_THRESHOLD,
++            SET_CORRECTION_DIRECTIONS,
++            SET_ACCUMULATION_FRAMES,
++            SET_PROPORTIONAL_GAINS,
++            SET_INTEGRAL_GAINS,
++            SET_MAXIMUM_PULSES,
++            SET_MINIMUM_PULSES,
++            START_GUIDING,
++            STOP_GUIDING,
++            GET_DRIFT_DATA,
++            GET_GUIDE_STATUS,
++            SEND_SHUTDOWN,
++            OPEN_SHUTTER,
++            CLOSE_SHUTTER,
++            DITHER,
++            GET_CAMERA_DRIVER_TYPE,
++            SET_CAMERA_DRIVER_TYPE,
++            GET_HW_STATUS,
++            GET_DSLR_NAMES
++        };
++
++        /* Constructor and destructor */
++        starspi_server(lin_guider *parentInstance);
++        ~starspi_server();
++
++        void startServer();
++        void stopServer();
++
++        void reportHWStatus(bool isCameraOnline, bool isDriverOnline);
++};
++
++#endif
+diff -Nur lin_guider_pack/lin_guider/include/video.h lin_guider_pack_starspi_v5.0.1/lin_guider/include/video.h
+--- lin_guider_pack/lin_guider/include/video.h	2019-12-13 20:05:25.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/include/video.h	2021-03-10 22:26:34.229633700 +0800
+@@ -173,7 +173,7 @@
+ 		pixel_format( V4L2_PIX_FMT_GREY ),		// may be for philips V4L2_PIX_FMT_YUV420 or V4L2_PIX_FMT_PWC2  (PHILIPS specific)
+ 		width( 640 ),
+ 		height( 480 ),
+-		fps( time_fract::mk_fps( 1, 10 ) ),
++		fps( time_fract::mk_fps( 1, 1 ) ),
+ 		autogain( 0 ),
+ 		gain( 0 ),
+ 		exposure( 0 ),
+diff -Nur lin_guider_pack/lin_guider/lin_guider.pro lin_guider_pack_starspi_v5.0.1/lin_guider/lin_guider.pro
+--- lin_guider_pack/lin_guider/lin_guider.pro	2019-12-13 21:38:31.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/lin_guider.pro	2021-03-10 22:52:03.115506600 +0800
+@@ -73,6 +73,11 @@
+     include/timer.h \
+     include/utils.h \
+     include/io_driver.h \
++    include/starspi_server.h \
++    include/starspi_guider.h \
++    include/starspi_calibration.h \
++    include/starspi_dslr.h \
++    include/starspi_camera.h \
+     include/lin_guider.h
+ SOURCES += src/drift_graph.cpp \
+     src/target_graph.cpp \
+@@ -134,6 +139,11 @@
+     src/main.cpp \
+     src/utils.cpp \
+     src/io_driver.cpp \
++    src/starspi_server.cpp \
++    src/starspi_guider.cpp \
++    src/starspi_calibration.cpp \
++    src/starspi_dslr.cpp \
++    src/starspi_camera.cpp \
+     src/lin_guider.cpp
+ FORMS += ui/settings.ui \
+     ui/mrecorder.ui \
+@@ -151,7 +161,10 @@
+     ./
+ LIBS += -lusb-1.0 \
+     -ldl \
+-    -lrt
++    -lrt \
++    -lX11 \
++    -lgphoto2 \
++    -lgphoto2_port
+ 
+ *-g++* {
+     CXXVer = $$system(echo | $$QMAKE_CXX -dM -E - | fgrep __GNUC__ | cut -d\" \" -f 3)
+diff -Nur lin_guider_pack/lin_guider/Makefile lin_guider_pack_starspi_v5.0.1/lin_guider/Makefile
+--- lin_guider_pack/lin_guider/Makefile	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/Makefile	2021-03-10 22:53:25.812841800 +0800
+@@ -0,0 +1,1798 @@
++#############################################################################
++# Makefile for building: build/release/lin_guider
++# Generated by qmake (3.1) (Qt 5.12.8)
++# Project:  lin_guider.pro
++# Template: app
++# Command: /usr/lib/qt5/bin/qmake -o Makefile lin_guider.pro CONFIG+=release
++#############################################################################
++
++MAKEFILE      = Makefile
++
++EQ            = =
++
++####### Compiler, tools and options
++
++CC            = gcc
++CXX           = g++
++DEFINES       = -DQT_NO_DEBUG -DQT_WIDGETS_LIB -DQT_GUI_LIB -DQT_CORE_LIB
++CFLAGS        = -pipe -O2 -Wall -W -D_REENTRANT -fPIC $(DEFINES)
++CXXFLAGS      = -pipe -Wimplicit-fallthrough=0 -Wformat-truncation=0 -O2 -Wall -W -D_REENTRANT -fPIC $(DEFINES)
++INCPATH       = -I. -Iinclude -Iinclude/io_dev -Iinclude/video_dev -Iinclude/math -I. -isystem /usr/include/aarch64-linux-gnu/qt5 -isystem /usr/include/aarch64-linux-gnu/qt5/QtWidgets -isystem /usr/include/aarch64-linux-gnu/qt5/QtGui -isystem /usr/include/aarch64-linux-gnu/qt5/QtCore -Ibuild/release/.moc -Ibuild/release/.ui -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++
++QMAKE         = /usr/lib/qt5/bin/qmake
++DEL_FILE      = rm -f
++CHK_DIR_EXISTS= test -d
++MKDIR         = mkdir -p
++COPY          = cp -f
++COPY_FILE     = cp -f
++COPY_DIR      = cp -f -R
++INSTALL_FILE  = install -m 644 -p
++INSTALL_PROGRAM = install -m 755 -p
++INSTALL_DIR   = cp -f -R
++QINSTALL      = /usr/lib/qt5/bin/qmake -install qinstall
++QINSTALL_PROGRAM = /usr/lib/qt5/bin/qmake -install qinstall -exe
++DEL_FILE      = rm -f
++SYMLINK       = ln -f -s
++DEL_DIR       = rmdir
++MOVE          = mv -f
++TAR           = tar -cf
++COMPRESS      = gzip -9f
++DISTNAME      = lin_guider1.0.0
++DISTDIR = /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.obj/lin_guider1.0.0
++LINK          = g++
++LFLAGS        = -Wl,-O1
++LIBS          = $(SUBLIBS) -lusb-1.0 -ldl -lrt -lX11 -lgphoto2 -lgphoto2_port /usr/lib/aarch64-linux-gnu/libQt5Widgets.so /usr/lib/aarch64-linux-gnu/libQt5Gui.so /usr/lib/aarch64-linux-gnu/libQt5Core.so /usr/lib/aarch64-linux-gnu/libGL.so -lpthread   
++AR            = ar cqs
++RANLIB        = 
++SED           = sed
++STRIP         = strip
++
++####### Output directory
++
++OBJECTS_DIR   = build/release/.obj/
++
++####### Files
++
++SOURCES       = src/drift_graph.cpp \
++		src/target_graph.cpp \
++		src/math/gmath_donuts.cpp \
++		src/math/donuts_guide.cpp \
++		src/math/guider_math.cpp \
++		src/io_dev/io_nexstar.cpp \
++		src/io_dev/io_skywatcher.cpp \
++		src/io_dev/io_qhy5ii.cpp \
++		src/io_dev/io_atik.cpp \
++		src/io_dev/io_sx.cpp \
++		src/video_dev/qhy5ii_core.cpp \
++		src/video_dev/video_qhy5ii.cpp \
++		src/video_dev/video_atik.cpp \
++		src/io_dev/io_asi.cpp \
++		src/video_dev/atik_core.cpp \
++		src/video_dev/sxccdusb.cpp \
++		src/video_dev/video_sx.cpp \
++		src/video_dev/sx_core.cpp \
++		src/video_dev/video_asi.cpp \
++		src/video_dev/asi_core.cpp \
++		src/io_dev/io_gpio.cpp \
++		src/io_dev/io_gpusb.cpp \
++		src/settings.cpp \
++		src/filters.cpp \
++		src/io_dev/io_qhy6.cpp \
++		src/video_dev/qhy6_core.cpp \
++		src/video_dev/video_qhy6.cpp \
++		src/io_dev/io_null.cpp \
++		src/io_dev/io_qhy5.cpp \
++		src/io_dev/io_ftdi.cpp \
++		src/io_dev/io_lpt.cpp \
++		src/video_dev/video_null.cpp \
++		src/video_dev/video_dsi2pro.cpp \
++		src/video_dev/video_qhy5.cpp \
++		src/video_dev/video_pwc.cpp \
++		src/video_dev/video_uvc.cpp \
++		src/bayer.cpp \
++		src/lusb.cpp \
++		src/video_dev/qhy5_core.cpp \
++		src/server.cpp \
++		src/common.cpp \
++		src/avilib.cpp \
++		src/mrecorder.cpp \
++		src/about.cpp \
++		src/fio.cpp \
++		src/maindef.cpp \
++		src/params.cpp \
++		src/setup_video.cpp \
++		src/rcalibration.cpp \
++		src/matr.cpp \
++		src/vect.cpp \
++		src/gmath.cpp \
++		src/guider.cpp \
++		src/scroll_graph.cpp \
++		src/decoder.cpp \
++		src/video.cpp \
++		src/setup_driver.cpp \
++		src/main.cpp \
++		src/utils.cpp \
++		src/io_driver.cpp \
++		src/starspi_server.cpp \
++		src/starspi_guider.cpp \
++		src/starspi_calibration.cpp \
++		src/starspi_dslr.cpp \
++		src/starspi_camera.cpp \
++		src/lin_guider.cpp build/release/.rcc/qrc_lin_guider.cpp \
++		build/release/.moc/moc_settings.cpp \
++		build/release/.moc/moc_server.cpp \
++		build/release/.moc/moc_common.cpp \
++		build/release/.moc/moc_mrecorder.cpp \
++		build/release/.moc/moc_about.cpp \
++		build/release/.moc/moc_setup_video.cpp \
++		build/release/.moc/moc_rcalibration.cpp \
++		build/release/.moc/moc_guider.cpp \
++		build/release/.moc/moc_video.cpp \
++		build/release/.moc/moc_setup_driver.cpp \
++		build/release/.moc/moc_starspi_server.cpp \
++		build/release/.moc/moc_lin_guider.cpp
++OBJECTS       = build/release/.obj/drift_graph.o \
++		build/release/.obj/target_graph.o \
++		build/release/.obj/gmath_donuts.o \
++		build/release/.obj/donuts_guide.o \
++		build/release/.obj/guider_math.o \
++		build/release/.obj/io_nexstar.o \
++		build/release/.obj/io_skywatcher.o \
++		build/release/.obj/io_qhy5ii.o \
++		build/release/.obj/io_atik.o \
++		build/release/.obj/io_sx.o \
++		build/release/.obj/qhy5ii_core.o \
++		build/release/.obj/video_qhy5ii.o \
++		build/release/.obj/video_atik.o \
++		build/release/.obj/io_asi.o \
++		build/release/.obj/atik_core.o \
++		build/release/.obj/sxccdusb.o \
++		build/release/.obj/video_sx.o \
++		build/release/.obj/sx_core.o \
++		build/release/.obj/video_asi.o \
++		build/release/.obj/asi_core.o \
++		build/release/.obj/io_gpio.o \
++		build/release/.obj/io_gpusb.o \
++		build/release/.obj/settings.o \
++		build/release/.obj/filters.o \
++		build/release/.obj/io_qhy6.o \
++		build/release/.obj/qhy6_core.o \
++		build/release/.obj/video_qhy6.o \
++		build/release/.obj/io_null.o \
++		build/release/.obj/io_qhy5.o \
++		build/release/.obj/io_ftdi.o \
++		build/release/.obj/io_lpt.o \
++		build/release/.obj/video_null.o \
++		build/release/.obj/video_dsi2pro.o \
++		build/release/.obj/video_qhy5.o \
++		build/release/.obj/video_pwc.o \
++		build/release/.obj/video_uvc.o \
++		build/release/.obj/bayer.o \
++		build/release/.obj/lusb.o \
++		build/release/.obj/qhy5_core.o \
++		build/release/.obj/server.o \
++		build/release/.obj/common.o \
++		build/release/.obj/avilib.o \
++		build/release/.obj/mrecorder.o \
++		build/release/.obj/about.o \
++		build/release/.obj/fio.o \
++		build/release/.obj/maindef.o \
++		build/release/.obj/params.o \
++		build/release/.obj/setup_video.o \
++		build/release/.obj/rcalibration.o \
++		build/release/.obj/matr.o \
++		build/release/.obj/vect.o \
++		build/release/.obj/gmath.o \
++		build/release/.obj/guider.o \
++		build/release/.obj/scroll_graph.o \
++		build/release/.obj/decoder.o \
++		build/release/.obj/video.o \
++		build/release/.obj/setup_driver.o \
++		build/release/.obj/main.o \
++		build/release/.obj/utils.o \
++		build/release/.obj/io_driver.o \
++		build/release/.obj/starspi_server.o \
++		build/release/.obj/starspi_guider.o \
++		build/release/.obj/starspi_calibration.o \
++		build/release/.obj/starspi_dslr.o \
++		build/release/.obj/starspi_camera.o \
++		build/release/.obj/lin_guider.o \
++		build/release/.obj/qrc_lin_guider.o \
++		build/release/.obj/moc_settings.o \
++		build/release/.obj/moc_server.o \
++		build/release/.obj/moc_common.o \
++		build/release/.obj/moc_mrecorder.o \
++		build/release/.obj/moc_about.o \
++		build/release/.obj/moc_setup_video.o \
++		build/release/.obj/moc_rcalibration.o \
++		build/release/.obj/moc_guider.o \
++		build/release/.obj/moc_video.o \
++		build/release/.obj/moc_setup_driver.o \
++		build/release/.obj/moc_starspi_server.o \
++		build/release/.obj/moc_lin_guider.o
++DIST          = /usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_pre.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/linux.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/sanitize.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base-unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-base.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/qconfig.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_accessibility_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_bootstrap_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_devicediscovery_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_edid_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_egl_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfs_kms_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfsdeviceintegration_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eventdispatcher_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fb_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fontdatabase_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_glx_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_input_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_kms_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_linuxaccessibility_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_platformcompositor_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_service_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_theme_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_vulkan_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xcb_qpa_lib_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_functions.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_config.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++/qmake.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_post.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exclusive_builds.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/toolchain.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_pre.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resolve_config.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_post.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/warn_on.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resources.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/moc.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/opengl.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/uic.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/thread.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qmake_use.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/file_copies.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/testcase_targets.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exceptions.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/yacc.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/lex.prf \
++		lin_guider.pro include/drift_graph.h \
++		include/target_graph.h \
++		include/math/gmath_donuts.h \
++		include/math/donuts_guide.h \
++		include/math/guider_math.h \
++		include/io_dev/io_nexstar.h \
++		include/io_dev/io_skywatcher.h \
++		include/io_dev/io_qhy5ii.h \
++		include/video_dev/qhy5ii_core.h \
++		include/video_dev/video_qhy5ii.h \
++		include/io_dev/io_gpio.h \
++		include/io_dev/io_gpusb.h \
++		include/settings.h \
++		include/filters.h \
++		include/io_dev/io_qhy6.h \
++		include/video_dev/qhy6_core.h \
++		include/video_dev/video_qhy6.h \
++		include/io_dev/io_null.h \
++		include/io_dev/io_qhy5.h \
++		include/io_dev/io_atik.h \
++		include/io_dev/io_asi.h \
++		include/io_dev/io_sx.h \
++		include/io_dev/io_ftdi.h \
++		include/io_dev/io_lpt.h \
++		include/video_dev/video_null.h \
++		include/video_dev/video_dsi2pro.h \
++		include/video_dev/video_qhy5.h \
++		include/video_dev/video_atik.h \
++		include/video_dev/atik_core.h \
++		include/video_dev/atikccdusb.h \
++		include/video_dev/video_sx.h \
++		include/video_dev/sx_core.h \
++		include/video_dev/video_asi.h \
++		include/video_dev/asi_core.h \
++		include/video_dev/sxccdusb.h \
++		include/video_dev/video_pwc.h \
++		include/video_dev/video_uvc.h \
++		include/bayer.h \
++		include/lusb.h \
++		include/video_dev/qhy5_core.h \
++		include/server.h \
++		include/common.h \
++		include/mrecorder.h \
++		include/avilib.h \
++		include/about.h \
++		include/fio.h \
++		include/maindef.h \
++		include/pwc-ioctl.h \
++		include/params.h \
++		include/setup_video.h \
++		include/rcalibration.h \
++		include/matr.h \
++		include/vect.h \
++		include/gmath.h \
++		include/guider.h \
++		include/scroll_graph.h \
++		include/decoder.h \
++		include/video_proxy.h \
++		include/video.h \
++		include/setup_driver.h \
++		include/timer.h \
++		include/utils.h \
++		include/io_driver.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/lin_guider.h src/drift_graph.cpp \
++		src/target_graph.cpp \
++		src/math/gmath_donuts.cpp \
++		src/math/donuts_guide.cpp \
++		src/math/guider_math.cpp \
++		src/io_dev/io_nexstar.cpp \
++		src/io_dev/io_skywatcher.cpp \
++		src/io_dev/io_qhy5ii.cpp \
++		src/io_dev/io_atik.cpp \
++		src/io_dev/io_sx.cpp \
++		src/video_dev/qhy5ii_core.cpp \
++		src/video_dev/video_qhy5ii.cpp \
++		src/video_dev/video_atik.cpp \
++		src/io_dev/io_asi.cpp \
++		src/video_dev/atik_core.cpp \
++		src/video_dev/sxccdusb.cpp \
++		src/video_dev/video_sx.cpp \
++		src/video_dev/sx_core.cpp \
++		src/video_dev/video_asi.cpp \
++		src/video_dev/asi_core.cpp \
++		src/io_dev/io_gpio.cpp \
++		src/io_dev/io_gpusb.cpp \
++		src/settings.cpp \
++		src/filters.cpp \
++		src/io_dev/io_qhy6.cpp \
++		src/video_dev/qhy6_core.cpp \
++		src/video_dev/video_qhy6.cpp \
++		src/io_dev/io_null.cpp \
++		src/io_dev/io_qhy5.cpp \
++		src/io_dev/io_ftdi.cpp \
++		src/io_dev/io_lpt.cpp \
++		src/video_dev/video_null.cpp \
++		src/video_dev/video_dsi2pro.cpp \
++		src/video_dev/video_qhy5.cpp \
++		src/video_dev/video_pwc.cpp \
++		src/video_dev/video_uvc.cpp \
++		src/bayer.cpp \
++		src/lusb.cpp \
++		src/video_dev/qhy5_core.cpp \
++		src/server.cpp \
++		src/common.cpp \
++		src/avilib.cpp \
++		src/mrecorder.cpp \
++		src/about.cpp \
++		src/fio.cpp \
++		src/maindef.cpp \
++		src/params.cpp \
++		src/setup_video.cpp \
++		src/rcalibration.cpp \
++		src/matr.cpp \
++		src/vect.cpp \
++		src/gmath.cpp \
++		src/guider.cpp \
++		src/scroll_graph.cpp \
++		src/decoder.cpp \
++		src/video.cpp \
++		src/setup_driver.cpp \
++		src/main.cpp \
++		src/utils.cpp \
++		src/io_driver.cpp \
++		src/starspi_server.cpp \
++		src/starspi_guider.cpp \
++		src/starspi_calibration.cpp \
++		src/starspi_dslr.cpp \
++		src/starspi_camera.cpp \
++		src/lin_guider.cpp
++QMAKE_TARGET  = lin_guider
++DESTDIR       = build/release/
++TARGET        = build/release/lin_guider
++
++
++first: all
++####### Build rules
++
++build/release/lin_guider: build/release/.ui/ui_settings.h build/release/.ui/ui_mrecorder.h build/release/.ui/ui_about.h build/release/.ui/ui_setup_video.h build/release/.ui/ui_rcalibration.h build/release/.ui/ui_guider.h build/release/.ui/ui_setup_driver.h build/release/.ui/ui_lin_guider.h $(OBJECTS)  
++	@test -d build/release/ || mkdir -p build/release/
++	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
++
++Makefile: lin_guider.pro /usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++/qmake.conf /usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_pre.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/linux.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/sanitize.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base-unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-base.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-unix.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/qconfig.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_accessibility_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_bootstrap_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_devicediscovery_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_edid_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_egl_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfs_kms_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfsdeviceintegration_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eventdispatcher_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fb_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fontdatabase_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_glx_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_input_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_kms_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_linuxaccessibility_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_platformcompositor_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_service_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_theme_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_vulkan_support_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xcb_qpa_lib_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml_private.pri \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_functions.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_config.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++/qmake.conf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_post.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exclusive_builds.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/toolchain.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_pre.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resolve_config.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_post.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/warn_on.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resources.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/moc.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/opengl.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/uic.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/thread.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qmake_use.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/file_copies.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/testcase_targets.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exceptions.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/yacc.prf \
++		/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/lex.prf \
++		lin_guider.pro \
++		rc/lin_guider.qrc
++	$(QMAKE) -o Makefile lin_guider.pro CONFIG+=release
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_pre.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/unix.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/linux.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/sanitize.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/gcc-base-unix.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-base.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/common/g++-unix.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/qconfig.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_accessibility_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_bootstrap_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_concurrent_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_core_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_dbus_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_devicediscovery_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_edid_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_egl_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfs_kms_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eglfsdeviceintegration_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_eventdispatcher_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fb_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_fontdatabase_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_glx_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_gui_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_input_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_kms_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_linuxaccessibility_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_network_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_opengl_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_openglextensions_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_platformcompositor_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_printsupport_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_service_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_sql_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_testlib_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_theme_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_vulkan_support_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_widgets_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xcb_qpa_lib_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/modules/qt_lib_xml_private.pri:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_functions.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt_config.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++/qmake.conf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/spec_post.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exclusive_builds.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/toolchain.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_pre.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resolve_config.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/default_post.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/warn_on.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qt.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/resources.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/moc.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/opengl.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/uic.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/unix/thread.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/qmake_use.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/file_copies.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/testcase_targets.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/exceptions.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/yacc.prf:
++/usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/lex.prf:
++lin_guider.pro:
++rc/lin_guider.qrc:
++qmake: FORCE
++	@$(QMAKE) -o Makefile lin_guider.pro CONFIG+=release
++
++qmake_all: FORCE
++
++
++all: Makefile build/release/lin_guider
++
++dist: distdir FORCE
++	(cd `dirname $(DISTDIR)` && $(TAR) $(DISTNAME).tar $(DISTNAME) && $(COMPRESS) $(DISTNAME).tar) && $(MOVE) `dirname $(DISTDIR)`/$(DISTNAME).tar.gz . && $(DEL_FILE) -r $(DISTDIR)
++
++distdir: FORCE
++	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
++	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
++	$(COPY_FILE) --parents rc/lin_guider.qrc $(DISTDIR)/
++	$(COPY_FILE) --parents /usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/data/dummy.cpp $(DISTDIR)/
++	$(COPY_FILE) --parents include/drift_graph.h include/target_graph.h include/math/gmath_donuts.h include/math/donuts_guide.h include/math/guider_math.h include/io_dev/io_nexstar.h include/io_dev/io_skywatcher.h include/io_dev/io_qhy5ii.h include/video_dev/qhy5ii_core.h include/video_dev/video_qhy5ii.h include/io_dev/io_gpio.h include/io_dev/io_gpusb.h include/settings.h include/filters.h include/io_dev/io_qhy6.h include/video_dev/qhy6_core.h include/video_dev/video_qhy6.h include/io_dev/io_null.h include/io_dev/io_qhy5.h include/io_dev/io_atik.h include/io_dev/io_asi.h include/io_dev/io_sx.h include/io_dev/io_ftdi.h include/io_dev/io_lpt.h include/video_dev/video_null.h include/video_dev/video_dsi2pro.h include/video_dev/video_qhy5.h include/video_dev/video_atik.h include/video_dev/atik_core.h include/video_dev/atikccdusb.h include/video_dev/video_sx.h include/video_dev/sx_core.h include/video_dev/video_asi.h include/video_dev/asi_core.h include/video_dev/sxccdusb.h include/video_dev/video_pwc.h include/video_dev/video_uvc.h include/bayer.h include/lusb.h include/video_dev/qhy5_core.h include/server.h include/common.h include/mrecorder.h include/avilib.h include/about.h include/fio.h include/maindef.h include/pwc-ioctl.h include/params.h include/setup_video.h include/rcalibration.h include/matr.h include/vect.h include/gmath.h include/guider.h include/scroll_graph.h include/decoder.h include/video_proxy.h include/video.h include/setup_driver.h include/timer.h include/utils.h include/io_driver.h include/starspi_server.h include/starspi_guider.h include/starspi_calibration.h include/starspi_dslr.h include/starspi_camera.h include/lin_guider.h $(DISTDIR)/
++	$(COPY_FILE) --parents src/drift_graph.cpp src/target_graph.cpp src/math/gmath_donuts.cpp src/math/donuts_guide.cpp src/math/guider_math.cpp src/io_dev/io_nexstar.cpp src/io_dev/io_skywatcher.cpp src/io_dev/io_qhy5ii.cpp src/io_dev/io_atik.cpp src/io_dev/io_sx.cpp src/video_dev/qhy5ii_core.cpp src/video_dev/video_qhy5ii.cpp src/video_dev/video_atik.cpp src/io_dev/io_asi.cpp src/video_dev/atik_core.cpp src/video_dev/sxccdusb.cpp src/video_dev/video_sx.cpp src/video_dev/sx_core.cpp src/video_dev/video_asi.cpp src/video_dev/asi_core.cpp src/io_dev/io_gpio.cpp src/io_dev/io_gpusb.cpp src/settings.cpp src/filters.cpp src/io_dev/io_qhy6.cpp src/video_dev/qhy6_core.cpp src/video_dev/video_qhy6.cpp src/io_dev/io_null.cpp src/io_dev/io_qhy5.cpp src/io_dev/io_ftdi.cpp src/io_dev/io_lpt.cpp src/video_dev/video_null.cpp src/video_dev/video_dsi2pro.cpp src/video_dev/video_qhy5.cpp src/video_dev/video_pwc.cpp src/video_dev/video_uvc.cpp src/bayer.cpp src/lusb.cpp src/video_dev/qhy5_core.cpp src/server.cpp src/common.cpp src/avilib.cpp src/mrecorder.cpp src/about.cpp src/fio.cpp src/maindef.cpp src/params.cpp src/setup_video.cpp src/rcalibration.cpp src/matr.cpp src/vect.cpp src/gmath.cpp src/guider.cpp src/scroll_graph.cpp src/decoder.cpp src/video.cpp src/setup_driver.cpp src/main.cpp src/utils.cpp src/io_driver.cpp src/starspi_server.cpp src/starspi_guider.cpp src/starspi_calibration.cpp src/starspi_dslr.cpp src/starspi_camera.cpp src/lin_guider.cpp $(DISTDIR)/
++	$(COPY_FILE) --parents ui/settings.ui ui/mrecorder.ui ui/about.ui ui/setup_video.ui ui/rcalibration.ui ui/guider.ui ui/setup_driver.ui ui/lin_guider.ui $(DISTDIR)/
++
++
++clean: compiler_clean 
++	-$(DEL_FILE) $(OBJECTS)
++	-$(DEL_FILE) *~ core *.core
++
++
++distclean: clean 
++	-$(DEL_FILE) $(TARGET) 
++	-$(DEL_FILE) .qmake.stash
++	-$(DEL_FILE) Makefile
++
++
++####### Sub-libraries
++
++mocclean: compiler_moc_header_clean compiler_moc_objc_header_clean compiler_moc_source_clean
++
++mocables: compiler_moc_header_make_all compiler_moc_objc_header_make_all compiler_moc_source_make_all
++
++check: first
++
++benchmark: first
++
++compiler_rcc_make_all: build/release/.rcc/qrc_lin_guider.cpp
++compiler_rcc_clean:
++	-$(DEL_FILE) build/release/.rcc/qrc_lin_guider.cpp
++build/release/.rcc/qrc_lin_guider.cpp: rc/lin_guider.qrc \
++		/usr/lib/qt5/bin/rcc \
++		rc/adjust2fit.png \
++		rc/guiding.png \
++		rc/zoom.png \
++		rc/calibr2guider.png \
++		rc/video.png \
++		rc/driver.png \
++		rc/record.png \
++		rc/zoom_out.png \
++		rc/zoom_in.png \
++		rc/calibration.png \
++		rc/lin_guider.png \
++		rc/about.png \
++		rc/settings.png
++	/usr/lib/qt5/bin/rcc -name lin_guider rc/lin_guider.qrc -o build/release/.rcc/qrc_lin_guider.cpp
++
++compiler_moc_predefs_make_all: build/release/.moc/moc_predefs.h
++compiler_moc_predefs_clean:
++	-$(DEL_FILE) build/release/.moc/moc_predefs.h
++build/release/.moc/moc_predefs.h: /usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/data/dummy.cpp
++	g++ -pipe -Wimplicit-fallthrough=0 -Wformat-truncation=0 -O2 -Wall -W -dM -E -o build/release/.moc/moc_predefs.h /usr/lib/aarch64-linux-gnu/qt5/mkspecs/features/data/dummy.cpp
++
++compiler_moc_header_make_all: build/release/.moc/moc_settings.cpp build/release/.moc/moc_server.cpp build/release/.moc/moc_common.cpp build/release/.moc/moc_mrecorder.cpp build/release/.moc/moc_about.cpp build/release/.moc/moc_setup_video.cpp build/release/.moc/moc_rcalibration.cpp build/release/.moc/moc_guider.cpp build/release/.moc/moc_video.cpp build/release/.moc/moc_setup_driver.cpp build/release/.moc/moc_starspi_server.cpp build/release/.moc/moc_lin_guider.cpp
++compiler_moc_header_clean:
++	-$(DEL_FILE) build/release/.moc/moc_settings.cpp build/release/.moc/moc_server.cpp build/release/.moc/moc_common.cpp build/release/.moc/moc_mrecorder.cpp build/release/.moc/moc_about.cpp build/release/.moc/moc_setup_video.cpp build/release/.moc/moc_rcalibration.cpp build/release/.moc/moc_guider.cpp build/release/.moc/moc_video.cpp build/release/.moc/moc_setup_driver.cpp build/release/.moc/moc_starspi_server.cpp build/release/.moc/moc_lin_guider.cpp
++build/release/.moc/moc_settings.cpp: include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/server.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/settings.h -o build/release/.moc/moc_settings.cpp
++
++build/release/.moc/moc_server.cpp: include/server.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/server.h -o build/release/.moc/moc_server.cpp
++
++build/release/.moc/moc_common.cpp: include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/common.h -o build/release/.moc/moc_common.cpp
++
++build/release/.moc/moc_mrecorder.cpp: include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/mrecorder.h -o build/release/.moc/moc_mrecorder.cpp
++
++build/release/.moc/moc_about.cpp: include/about.h \
++		build/release/.ui/ui_about.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/about.h -o build/release/.moc/moc_about.cpp
++
++build/release/.moc/moc_setup_video.cpp: include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/maindef.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/setup_video.h -o build/release/.moc/moc_setup_video.cpp
++
++build/release/.moc/moc_rcalibration.cpp: include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/rcalibration.h -o build/release/.moc/moc_rcalibration.cpp
++
++build/release/.moc/moc_guider.cpp: include/guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/guider.h -o build/release/.moc/moc_guider.cpp
++
++build/release/.moc/moc_video.cpp: include/video.h \
++		include/maindef.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/video.h -o build/release/.moc/moc_video.cpp
++
++build/release/.moc/moc_setup_driver.cpp: include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/io_driver.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/setup_driver.h -o build/release/.moc/moc_setup_driver.cpp
++
++build/release/.moc/moc_starspi_server.cpp: include/starspi_server.h \
++		include/video.h \
++		include/maindef.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/starspi_server.h -o build/release/.moc/moc_starspi_server.cpp
++
++build/release/.moc/moc_lin_guider.cpp: include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		build/release/.moc/moc_predefs.h \
++		/usr/lib/qt5/bin/moc
++	/usr/lib/qt5/bin/moc $(DEFINES) --include /media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/build/release/.moc/moc_predefs.h -I/usr/lib/aarch64-linux-gnu/qt5/mkspecs/linux-g++ -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/io_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/video_dev -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider/include/math -I/media/hdd/ws/lin_guider_pack_starspi_v5.0.1/lin_guider -I/usr/include/aarch64-linux-gnu/qt5 -I/usr/include/aarch64-linux-gnu/qt5/QtWidgets -I/usr/include/aarch64-linux-gnu/qt5/QtGui -I/usr/include/aarch64-linux-gnu/qt5/QtCore -I/usr/include/c++/9 -I/usr/include/aarch64-linux-gnu/c++/9 -I/usr/include/c++/9/backward -I/usr/lib/gcc/aarch64-linux-gnu/9/include -I/usr/local/include -I/usr/include/aarch64-linux-gnu -I/usr/include include/lin_guider.h -o build/release/.moc/moc_lin_guider.cpp
++
++compiler_moc_objc_header_make_all:
++compiler_moc_objc_header_clean:
++compiler_moc_source_make_all:
++compiler_moc_source_clean:
++compiler_uic_make_all: build/release/.ui/ui_settings.h build/release/.ui/ui_mrecorder.h build/release/.ui/ui_about.h build/release/.ui/ui_setup_video.h build/release/.ui/ui_rcalibration.h build/release/.ui/ui_guider.h build/release/.ui/ui_setup_driver.h build/release/.ui/ui_lin_guider.h
++compiler_uic_clean:
++	-$(DEL_FILE) build/release/.ui/ui_settings.h build/release/.ui/ui_mrecorder.h build/release/.ui/ui_about.h build/release/.ui/ui_setup_video.h build/release/.ui/ui_rcalibration.h build/release/.ui/ui_guider.h build/release/.ui/ui_setup_driver.h build/release/.ui/ui_lin_guider.h
++build/release/.ui/ui_settings.h: ui/settings.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/settings.ui -o build/release/.ui/ui_settings.h
++
++build/release/.ui/ui_mrecorder.h: ui/mrecorder.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/mrecorder.ui -o build/release/.ui/ui_mrecorder.h
++
++build/release/.ui/ui_about.h: ui/about.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/about.ui -o build/release/.ui/ui_about.h
++
++build/release/.ui/ui_setup_video.h: ui/setup_video.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/setup_video.ui -o build/release/.ui/ui_setup_video.h
++
++build/release/.ui/ui_rcalibration.h: ui/rcalibration.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/rcalibration.ui -o build/release/.ui/ui_rcalibration.h
++
++build/release/.ui/ui_guider.h: ui/guider.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/guider.ui -o build/release/.ui/ui_guider.h
++
++build/release/.ui/ui_setup_driver.h: ui/setup_driver.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/setup_driver.ui -o build/release/.ui/ui_setup_driver.h
++
++build/release/.ui/ui_lin_guider.h: ui/lin_guider.ui \
++		/usr/lib/qt5/bin/uic
++	/usr/lib/qt5/bin/uic ui/lin_guider.ui -o build/release/.ui/ui_lin_guider.h
++
++compiler_yacc_decl_make_all:
++compiler_yacc_decl_clean:
++compiler_yacc_impl_make_all:
++compiler_yacc_impl_clean:
++compiler_lex_make_all:
++compiler_lex_clean:
++compiler_clean: compiler_rcc_clean compiler_moc_predefs_clean compiler_moc_header_clean compiler_uic_clean 
++
++####### Compile
++
++build/release/.obj/drift_graph.o: src/drift_graph.cpp include/drift_graph.h \
++		include/utils.h \
++		include/maindef.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/drift_graph.o src/drift_graph.cpp
++
++build/release/.obj/target_graph.o: src/target_graph.cpp include/drift_graph.h \
++		include/target_graph.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/target_graph.o src/target_graph.cpp
++
++build/release/.obj/gmath_donuts.o: src/math/gmath_donuts.cpp include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/common.h \
++		include/utils.h \
++		include/filters.h \
++		include/math/gmath_donuts.h \
++		include/math/gmath_helper.h \
++		include/math/donuts_guide.h \
++		include/math/guider_math.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/gmath_donuts.o src/math/gmath_donuts.cpp
++
++build/release/.obj/donuts_guide.o: src/math/donuts_guide.cpp include/math/guider_math.h \
++		include/math/donuts_guide.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/donuts_guide.o src/math/donuts_guide.cpp
++
++build/release/.obj/guider_math.o: src/math/guider_math.cpp include/math/guider_math.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/guider_math.o src/math/guider_math.cpp
++
++build/release/.obj/io_nexstar.o: src/io_dev/io_nexstar.cpp include/io_dev/io_nexstar.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_nexstar.o src/io_dev/io_nexstar.cpp
++
++build/release/.obj/io_skywatcher.o: src/io_dev/io_skywatcher.cpp include/io_dev/io_skywatcher.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_skywatcher.o src/io_dev/io_skywatcher.cpp
++
++build/release/.obj/io_qhy5ii.o: src/io_dev/io_qhy5ii.cpp include/io_dev/io_qhy5ii.h \
++		include/io_driver.h \
++		include/video_dev/qhy5ii_core.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_qhy5ii.o src/io_dev/io_qhy5ii.cpp
++
++build/release/.obj/io_atik.o: src/io_dev/io_atik.cpp include/io_dev/io_atik.h \
++		include/video_dev/atik_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/video_dev/atikccdusb.h \
++		include/io_driver.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_atik.o src/io_dev/io_atik.cpp
++
++build/release/.obj/io_sx.o: src/io_dev/io_sx.cpp include/io_dev/io_sx.h \
++		include/video_dev/sx_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/timer.h \
++		include/video_dev/sxccdusb.h \
++		include/io_driver.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_sx.o src/io_dev/io_sx.cpp
++
++build/release/.obj/qhy5ii_core.o: src/video_dev/qhy5ii_core.cpp include/maindef.h \
++		include/utils.h \
++		include/lusb.h \
++		include/video_dev/qhy5ii_core.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/qhy5ii_core.o src/video_dev/qhy5ii_core.cpp
++
++build/release/.obj/video_qhy5ii.o: src/video_dev/video_qhy5ii.cpp include/video_dev/video_qhy5ii.h \
++		include/video.h \
++		include/maindef.h \
++		include/video_dev/qhy5ii_core.h \
++		include/timer.h \
++		include/utils.h \
++		include/lusb.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_qhy5ii.o src/video_dev/video_qhy5ii.cpp
++
++build/release/.obj/video_atik.o: src/video_dev/video_atik.cpp include/video_dev/video_atik.h \
++		include/video.h \
++		include/maindef.h \
++		include/timer.h \
++		include/video_dev/atik_core.h \
++		include/utils.h \
++		include/video_dev/atikccdusb.h \
++		include/filters.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_atik.o src/video_dev/video_atik.cpp
++
++build/release/.obj/io_asi.o: src/io_dev/io_asi.cpp include/io_dev/io_asi.h \
++		include/video_dev/asi_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/timer.h \
++		include/video_dev/ASICamera2.h \
++		include/io_driver.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_asi.o src/io_dev/io_asi.cpp
++
++build/release/.obj/atik_core.o: src/video_dev/atik_core.cpp include/video_dev/atik_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/video_dev/atikccdusb.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/atik_core.o src/video_dev/atik_core.cpp
++
++build/release/.obj/sxccdusb.o: src/video_dev/sxccdusb.cpp include/video_dev/sxccdusb.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/sxccdusb.o src/video_dev/sxccdusb.cpp
++
++build/release/.obj/video_sx.o: src/video_dev/video_sx.cpp include/video_dev/video_sx.h \
++		include/video.h \
++		include/maindef.h \
++		include/timer.h \
++		include/video_dev/sx_core.h \
++		include/utils.h \
++		include/video_dev/sxccdusb.h \
++		include/filters.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_sx.o src/video_dev/video_sx.cpp
++
++build/release/.obj/sx_core.o: src/video_dev/sx_core.cpp include/video_dev/sx_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/timer.h \
++		include/video_dev/sxccdusb.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/sx_core.o src/video_dev/sx_core.cpp
++
++build/release/.obj/video_asi.o: src/video_dev/video_asi.cpp include/video_dev/video_asi.h \
++		include/video.h \
++		include/maindef.h \
++		include/timer.h \
++		include/video_dev/asi_core.h \
++		include/utils.h \
++		include/video_dev/ASICamera2.h \
++		include/filters.h \
++		include/bayer.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_asi.o src/video_dev/video_asi.cpp
++
++build/release/.obj/asi_core.o: src/video_dev/asi_core.cpp include/video_dev/asi_core.h \
++		include/video.h \
++		include/maindef.h \
++		include/utils.h \
++		include/timer.h \
++		include/video_dev/ASICamera2.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/asi_core.o src/video_dev/asi_core.cpp
++
++build/release/.obj/io_gpio.o: src/io_dev/io_gpio.cpp include/io_dev/io_gpio.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_gpio.o src/io_dev/io_gpio.cpp
++
++build/release/.obj/io_gpusb.o: src/io_dev/io_gpusb.cpp include/io_dev/io_gpusb.h \
++		include/io_driver.h \
++		include/lusb.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_gpusb.o src/io_dev/io_gpusb.cpp
++
++build/release/.obj/settings.o: src/settings.cpp include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/settings.o src/settings.cpp
++
++build/release/.obj/filters.o: src/filters.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/filters.o src/filters.cpp
++
++build/release/.obj/io_qhy6.o: src/io_dev/io_qhy6.cpp include/io_dev/io_qhy6.h \
++		include/io_driver.h \
++		include/video_dev/qhy6_core.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_qhy6.o src/io_dev/io_qhy6.cpp
++
++build/release/.obj/qhy6_core.o: src/video_dev/qhy6_core.cpp include/maindef.h \
++		include/utils.h \
++		include/lusb.h \
++		include/video_dev/qhy6_core.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/qhy6_core.o src/video_dev/qhy6_core.cpp
++
++build/release/.obj/video_qhy6.o: src/video_dev/video_qhy6.cpp include/video_dev/video_qhy6.h \
++		include/video.h \
++		include/maindef.h \
++		include/video_dev/qhy6_core.h \
++		include/timer.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_qhy6.o src/video_dev/video_qhy6.cpp
++
++build/release/.obj/io_null.o: src/io_dev/io_null.cpp include/io_dev/io_null.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_null.o src/io_dev/io_null.cpp
++
++build/release/.obj/io_qhy5.o: src/io_dev/io_qhy5.cpp include/io_dev/io_qhy5.h \
++		include/io_driver.h \
++		include/video_dev/qhy5_core.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_qhy5.o src/io_dev/io_qhy5.cpp
++
++build/release/.obj/io_ftdi.o: src/io_dev/io_ftdi.cpp include/io_dev/io_ftdi.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_ftdi.o src/io_dev/io_ftdi.cpp
++
++build/release/.obj/io_lpt.o: src/io_dev/io_lpt.cpp include/io_dev/io_lpt.h \
++		include/io_driver.h \
++		include/maindef.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_lpt.o src/io_dev/io_lpt.cpp
++
++build/release/.obj/video_null.o: src/video_dev/video_null.cpp include/video_dev/video_null.h \
++		include/video.h \
++		include/maindef.h \
++		include/video_proxy.h \
++		include/timer.h \
++		include/utils.h \
++		include/filters.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_null.o src/video_dev/video_null.cpp
++
++build/release/.obj/video_dsi2pro.o: src/video_dev/video_dsi2pro.cpp include/video_dev/video_dsi2pro.h \
++		include/video.h \
++		include/maindef.h \
++		include/lusb.h \
++		include/timer.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_dsi2pro.o src/video_dev/video_dsi2pro.cpp
++
++build/release/.obj/video_qhy5.o: src/video_dev/video_qhy5.cpp include/video_dev/video_qhy5.h \
++		include/video.h \
++		include/maindef.h \
++		include/video_dev/qhy5_core.h \
++		include/timer.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_qhy5.o src/video_dev/video_qhy5.cpp
++
++build/release/.obj/video_pwc.o: src/video_dev/video_pwc.cpp include/video_dev/video_pwc.h \
++		include/video.h \
++		include/maindef.h \
++		include/pwc-ioctl.h \
++		include/timer.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_pwc.o src/video_dev/video_pwc.cpp
++
++build/release/.obj/video_uvc.o: src/video_dev/video_uvc.cpp include/video_dev/video_uvc.h \
++		include/video.h \
++		include/maindef.h \
++		include/timer.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video_uvc.o src/video_dev/video_uvc.cpp
++
++build/release/.obj/bayer.o: src/bayer.cpp include/bayer.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/bayer.o src/bayer.cpp
++
++build/release/.obj/lusb.o: src/lusb.cpp include/lusb.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/lusb.o src/lusb.cpp
++
++build/release/.obj/qhy5_core.o: src/video_dev/qhy5_core.cpp include/maindef.h \
++		include/utils.h \
++		include/lusb.h \
++		include/video_dev/qhy5_core.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/qhy5_core.o src/video_dev/qhy5_core.cpp
++
++build/release/.obj/server.o: src/server.cpp include/server.h \
++		include/utils.h \
++		include/timer.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/server.o src/server.cpp
++
++build/release/.obj/common.o: src/common.cpp include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/common.o src/common.cpp
++
++build/release/.obj/avilib.o: src/avilib.cpp include/avilib.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/avilib.o src/avilib.cpp
++
++build/release/.obj/mrecorder.o: src/mrecorder.cpp include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/mrecorder.o src/mrecorder.cpp
++
++build/release/.obj/about.o: src/about.cpp include/about.h \
++		build/release/.ui/ui_about.h \
++		include/maindef.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/about.o src/about.cpp
++
++build/release/.obj/fio.o: src/fio.cpp include/fio.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/fio.o src/fio.cpp
++
++build/release/.obj/maindef.o: src/maindef.cpp include/maindef.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/maindef.o src/maindef.cpp
++
++build/release/.obj/params.o: src/params.cpp include/params.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/params.o src/params.cpp
++
++build/release/.obj/setup_video.o: src/setup_video.cpp include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/setup_video.o src/setup_video.cpp
++
++build/release/.obj/rcalibration.o: src/rcalibration.cpp include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/rcalibration.o src/rcalibration.cpp
++
++build/release/.obj/matr.o: src/matr.cpp include/matr.h \
++		include/vect.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/matr.o src/matr.cpp
++
++build/release/.obj/vect.o: src/vect.cpp include/vect.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/vect.o src/vect.cpp
++
++build/release/.obj/gmath.o: src/gmath.cpp include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/filters.h \
++		include/common.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/gmath.o src/gmath.cpp
++
++build/release/.obj/guider.o: src/guider.cpp include/guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/scroll_graph.h \
++		include/target_graph.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/guider.o src/guider.cpp
++
++build/release/.obj/scroll_graph.o: src/scroll_graph.cpp include/drift_graph.h \
++		include/scroll_graph.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/scroll_graph.o src/scroll_graph.cpp
++
++build/release/.obj/decoder.o: src/decoder.cpp include/utils.h \
++		include/decoder.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/decoder.o src/decoder.cpp
++
++build/release/.obj/video.o: src/video.cpp include/maindef.h \
++		include/video.h \
++		include/decoder.h \
++		include/utils.h \
++		include/timer.h \
++		include/pwc-ioctl.h \
++		include/bayer.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/video.o src/video.cpp
++
++build/release/.obj/setup_driver.o: src/setup_driver.cpp include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/io_driver.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/setup_driver.o src/setup_driver.cpp
++
++build/release/.obj/main.o: src/main.cpp include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/main.o src/main.cpp
++
++build/release/.obj/utils.o: src/utils.cpp include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/utils.o src/utils.cpp
++
++build/release/.obj/io_driver.o: src/io_driver.cpp include/io_driver.h \
++		include/timer.h \
++		include/utils.h \
++		include/maindef.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/io_driver.o src/io_driver.cpp
++
++build/release/.obj/starspi_server.o: src/starspi_server.cpp include/starspi_server.h \
++		include/video.h \
++		include/maindef.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/starspi_server.o src/starspi_server.cpp
++
++build/release/.obj/starspi_guider.o: src/starspi_guider.cpp include/starspi_guider.h \
++		include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/starspi_guider.o src/starspi_guider.cpp
++
++build/release/.obj/starspi_calibration.o: src/starspi_calibration.cpp include/starspi_calibration.h \
++		include/gmath.h \
++		include/maindef.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/starspi_calibration.o src/starspi_calibration.cpp
++
++build/release/.obj/starspi_dslr.o: src/starspi_dslr.cpp include/starspi_dslr.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_camera.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/starspi_dslr.o src/starspi_dslr.cpp
++
++build/release/.obj/starspi_camera.o: src/starspi_camera.cpp include/starspi_camera.h \
++		include/video.h \
++		include/maindef.h \
++		include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/utils.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/starspi_camera.o src/starspi_camera.cpp
++
++build/release/.obj/lin_guider.o: src/lin_guider.cpp include/lin_guider.h \
++		build/release/.ui/ui_lin_guider.h \
++		include/common.h \
++		include/maindef.h \
++		include/gmath.h \
++		include/io_driver.h \
++		include/vect.h \
++		include/matr.h \
++		include/setup_driver.h \
++		build/release/.ui/ui_setup_driver.h \
++		include/setup_video.h \
++		build/release/.ui/ui_setup_video.h \
++		include/video.h \
++		include/rcalibration.h \
++		build/release/.ui/ui_rcalibration.h \
++		include/mrecorder.h \
++		build/release/.ui/ui_mrecorder.h \
++		include/avilib.h \
++		include/server.h \
++		include/guider.h \
++		build/release/.ui/ui_guider.h \
++		include/drift_graph.h \
++		include/fio.h \
++		include/about.h \
++		build/release/.ui/ui_about.h \
++		include/settings.h \
++		build/release/.ui/ui_settings.h \
++		include/timer.h \
++		include/starspi_server.h \
++		include/starspi_guider.h \
++		include/starspi_calibration.h \
++		include/starspi_dslr.h \
++		include/starspi_camera.h \
++		include/params.h \
++		include/utils.h \
++		include/io_dev/io_lpt.h \
++		include/io_dev/io_ftdi.h \
++		include/io_dev/io_qhy5.h \
++		include/video_dev/qhy5_core.h \
++		include/io_dev/io_null.h \
++		include/io_dev/io_qhy6.h \
++		include/video_dev/qhy6_core.h \
++		include/io_dev/io_gpusb.h \
++		include/io_dev/io_gpio.h \
++		include/io_dev/io_qhy5ii.h \
++		include/video_dev/qhy5ii_core.h \
++		include/io_dev/io_nexstar.h \
++		include/io_dev/io_atik.h \
++		include/video_dev/atik_core.h \
++		include/video_dev/atikccdusb.h \
++		include/io_dev/io_sx.h \
++		include/video_dev/sx_core.h \
++		include/video_dev/sxccdusb.h \
++		include/io_dev/io_asi.h \
++		include/video_dev/asi_core.h \
++		include/video_dev/ASICamera2.h \
++		include/io_dev/io_skywatcher.h \
++		include/video_dev/video_pwc.h \
++		include/video_dev/video_uvc.h \
++		include/video_dev/video_null.h \
++		include/video_proxy.h \
++		include/video_dev/video_qhy5.h \
++		include/video_dev/video_dsi2pro.h \
++		include/video_dev/video_qhy6.h \
++		include/video_dev/video_qhy5ii.h \
++		include/video_dev/video_atik.h \
++		include/video_dev/video_sx.h \
++		include/video_dev/video_asi.h \
++		include/math/gmath_donuts.h \
++		include/math/gmath_helper.h \
++		include/math/donuts_guide.h \
++		include/math/guider_math.h
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/lin_guider.o src/lin_guider.cpp
++
++build/release/.obj/qrc_lin_guider.o: build/release/.rcc/qrc_lin_guider.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/qrc_lin_guider.o build/release/.rcc/qrc_lin_guider.cpp
++
++build/release/.obj/moc_settings.o: build/release/.moc/moc_settings.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_settings.o build/release/.moc/moc_settings.cpp
++
++build/release/.obj/moc_server.o: build/release/.moc/moc_server.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_server.o build/release/.moc/moc_server.cpp
++
++build/release/.obj/moc_common.o: build/release/.moc/moc_common.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_common.o build/release/.moc/moc_common.cpp
++
++build/release/.obj/moc_mrecorder.o: build/release/.moc/moc_mrecorder.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_mrecorder.o build/release/.moc/moc_mrecorder.cpp
++
++build/release/.obj/moc_about.o: build/release/.moc/moc_about.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_about.o build/release/.moc/moc_about.cpp
++
++build/release/.obj/moc_setup_video.o: build/release/.moc/moc_setup_video.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_setup_video.o build/release/.moc/moc_setup_video.cpp
++
++build/release/.obj/moc_rcalibration.o: build/release/.moc/moc_rcalibration.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_rcalibration.o build/release/.moc/moc_rcalibration.cpp
++
++build/release/.obj/moc_guider.o: build/release/.moc/moc_guider.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_guider.o build/release/.moc/moc_guider.cpp
++
++build/release/.obj/moc_video.o: build/release/.moc/moc_video.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_video.o build/release/.moc/moc_video.cpp
++
++build/release/.obj/moc_setup_driver.o: build/release/.moc/moc_setup_driver.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_setup_driver.o build/release/.moc/moc_setup_driver.cpp
++
++build/release/.obj/moc_starspi_server.o: build/release/.moc/moc_starspi_server.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_starspi_server.o build/release/.moc/moc_starspi_server.cpp
++
++build/release/.obj/moc_lin_guider.o: build/release/.moc/moc_lin_guider.cpp 
++	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o build/release/.obj/moc_lin_guider.o build/release/.moc/moc_lin_guider.cpp
++
++####### Install
++
++install:  FORCE
++
++uninstall:  FORCE
++
++FORCE:
++
+diff -Nur lin_guider_pack/lin_guider/src/io_dev/io_gpio.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/io_dev/io_gpio.cpp
+--- lin_guider_pack/lin_guider/src/io_dev/io_gpio.cpp	2019-12-13 19:26:20.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/io_dev/io_gpio.cpp	2021-03-10 22:26:34.255403100 +0800
+@@ -86,18 +86,6 @@
+ {
+ 	//MUST BE called the first: stop thread and release resources
+ 	stop();
+-
+-	// save default config
+-	if( m_save_default_cfg )
+-	{
+-		QSettings settings( "GM_software", QString("io_gpio") );
+-		settings.beginGroup("gpio");
+-			settings.setValue( "RAP",  m_gpio_pin[ GPIO_RAP ] );
+-			settings.setValue( "RAN",  m_gpio_pin[ GPIO_RAN ] );
+-			settings.setValue( "DECP", m_gpio_pin[ GPIO_DECP ] );
+-			settings.setValue( "DECN", m_gpio_pin[ GPIO_DECN ] );
+-		settings.endGroup();
+-	}
+ }
+ 
+ 
+diff -Nur lin_guider_pack/lin_guider/src/lin_guider.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/lin_guider.cpp
+--- lin_guider_pack/lin_guider/src/lin_guider.cpp	2017-02-22 18:07:10.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/lin_guider.cpp	2021-03-10 23:36:00.620034900 +0800
+@@ -188,9 +188,8 @@
+ 
+ 	}
+ 	res = m_driver->set_deviceparams( m_device_params );
+-	if( !res )
+-		QMessageBox::warning( this, tr("Warning"), tr("Pulse-driver direction map possibly incorrect.\nIt may be cause of guiding errors or device corruption!\n\n\
+-It's strongly recommended to fix this issue."), QMessageBox::Ok );
++	if (!res)
++	    log_i("Pulse-driver direction map possibly incorrect");
+ 	m_driver->start( dev_name_io );
+ 
+ 	// video device
+@@ -335,6 +334,26 @@
+ 	m_timer.setSingleShot( true );
+ 	connect( &m_timer, SIGNAL( timeout() ), this, SLOT( onCmdTimer() ) );
+ 
++	/* Create the object required for StarsPi remote commands */
++	   m_starspi_server = new starspi_server(this);
++	   m_starspi_server->startServer();
++
++	m_starspi_guider = new starspi_guider(this, m_driver);
++	m_starspi_guider->setMath(m_math);
++
++	m_starspi_calibration = new starspi_calibration(this);
++	m_starspi_calibration->setMath(m_math);
++
++	m_starspi_dslr = new starspi_dslr(this);
++
++	m_starspi_camera = new starspi_camera(this);
++
++	/* The shutdown command will be invoked only if it was requested by the remote caller */
++	m_remote_shutdown = false;
++
++	/* We need a restart function to change the camera and driver */
++	m_remote_restart = false;
++
+ 	// setup geometry
+ 	{
+ 		const std::pair< QByteArray, QByteArray >& wnd_gs = m_param_block->get_wnd_geometry_state( "main_wnd" );
+@@ -382,11 +401,31 @@
+ 
+ 	delete about_wnd;
+ 
++	delete m_starspi_server;
++
++	delete m_starspi_calibration;
++
++	delete m_starspi_guider;
++
++	delete m_starspi_dslr;
++
++	delete m_starspi_camera;
++
+ 	// params must be deleted last
+ 	if( m_param_block )
+ 		delete m_param_block;
+ 
+ 	log_i("Terminated successfully.");
++
++	/* Shut down */
++	if (m_remote_shutdown)
++	    system("shutdown -h -P -t 2 now");
++
++	/* Restart the program via a simple script */
++	if (m_remote_restart)
++	    //system("./start_linguider.sh");
++	    //execl("/home/pi/starspi/lin_guider_pack_v3_1_starspi/lin_guider/lin_guider", NULL);
++	    execl("/usr/bin/lin_guider-starspi", NULL);
+ }
+ 
+ 
+@@ -454,43 +493,25 @@
+ 
+ void lin_guider::showEvent ( QShowEvent * event )
+ {
+- QString err_str;
+- bool full_quit = false;
++	bool camera_online;
++	bool driver_online;
+ 
+ 	if( event->spontaneous() )
+ 		return;
+ 
+-	if( !m_video->is_initialized() )
+-	{
+-		err_str += tr("Video input is not initialized.\n");
+-		full_quit = true;
+-	}
+-	if( !m_driver->is_initialized() )
+-	{
+-		err_str += tr("Pulse driver is not initialized.\n");
+-	}
++	camera_online = m_video->is_initialized();
++	driver_online = m_driver->is_initialized();
+ 
+-	if( !err_str.isNull() )
+-	{
+-		err_str += QString( tr("\nGuiding is not available.") );
+-		QMessageBox::critical( this, tr("Error"), err_str, QMessageBox::Ok );
+-		if( full_quit )
+-			return;
+-	}
++	/* Start video only if inited */
++	if (camera_online)
++	    m_video->pause( false );
+ 
+-	// start video
+-	m_video->pause( false );
++	 m_starspi_server->reportHWStatus(camera_online, driver_online);
+ }
+ 
+ 
+ void lin_guider::closeEvent( QCloseEvent *event )
+ {
+-	if( !u_yes("Do you want to quit?") )
+-	{
+-		event->ignore();
+-		return;
+-	}
+-
+ 	if( setup_video_wnd->isVisible() )
+ 		setup_video_wnd->close();
+ 	if( setup_driver_wnd->isVisible() )
+@@ -535,6 +556,12 @@
+ 	m_param_block->save();
+ }
+ 
++void lin_guider::flushAndPowerOff(bool is_restart)
++{
++	m_remote_shutdown =!(is_restart);
++	m_remote_restart = is_restart;
++	close();
++}
+ 
+ void lin_guider::onShowSetupGuider()
+ {
+@@ -711,7 +738,9 @@
+  	m_video->continue_capture();
+ 
+ 	// main GUIDER call
+-	guider_wnd->guide();
++	//guider_wnd->guide();
++
++	 m_starspi_guider->guiderCallback();
+ 
+ 	// try to record movie
+ 	recorder_wnd->add_frame();
+@@ -721,6 +750,43 @@
+ 	if( m_ui_params.half_refresh_rate && (tick & 1) )
+ 		return;
+ 
++	/* This piece of code was reintrodced from older versions of Lin_guider, it is used to have
++	   the overlays on the image buffer */
++	const ovr_params_t *povr = m_math->prepare_overlays();
++
++	QPainter painter;
++	painter.begin( m_video_buffer );
++	if( povr->visible & ovr_params_t::OVR_RETICLE_ORG )
++	{
++		painter.setPen( RET_ORG_COLOR );
++		painter.drawPoint( povr->reticle_org.x, povr->reticle_org.y );
++	}
++	if( povr->visible & ovr_params_t::OVR_SQUARE )
++	{
++		painter.setPen( SQR_OVL_COLOR );
++		painter.drawRect( povr->square_pos.x, povr->square_pos.y, povr->square_size, povr->square_size );
++	}
++	if( povr->visible & ovr_params_t::OVR_RETICLE )
++	{
++		painter.setPen( RA_COLOR );
++		painter.drawLine( povr->reticle_pos.x,
++				povr->reticle_pos.y,
++				povr->reticle_pos.x + povr->reticle_axis_ra.x,
++				povr->reticle_pos.y + povr->reticle_axis_ra.y);
++		painter.setPen( DEC_COLOR );
++		painter.drawLine( povr->reticle_pos.x,
++				povr->reticle_pos.y,
++				povr->reticle_pos.x + povr->reticle_axis_dec.x,
++				povr->reticle_pos.y + povr->reticle_axis_dec.y);
++
++		if( reticle_wnd->isVisible() )
++		{
++			painter.setPen( DEC_COLOR );
++			painter.drawRect( povr->reticle_pos.x-4, povr->reticle_pos.y-4, 8, 8);
++		}
++	}
++	painter.end();
++
+ 	// HFD
+ 	if( m_common_params.hfd_on )
+ 	{
+@@ -732,8 +798,18 @@
+ 
+ 	// draw overlays over video frame AFTER math and update frame
+ 	m_video_out->update();
++
++	/* Only 640*480 resolution is supported */
++	if((m_capture_params.width == 640) && (m_capture_params.height == 480))
++		/* Pass the image to the StarsPi server */
++		m_starspi_camera->transferImage(m_v_buf);
+ }
+ 
++void lin_guider::setGuiderSquareXY(int x, int y)
++{
++	const ovr_params_t *povr = m_math->prepare_overlays();
++	m_math->move_square( (double)(x - povr->square_size/2), (double)(y - povr->square_size/2) );
++}
+ 
+ // NOTE! don't add code of unknown performance here
+ void lin_guider::onRemoteCmd( void )
+diff -Nur lin_guider_pack/lin_guider/src/main.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/main.cpp
+--- lin_guider_pack/lin_guider/src/main.cpp	2017-02-22 18:07:10.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/main.cpp	2021-03-10 22:26:34.237022900 +0800
+@@ -24,10 +24,12 @@
+ #include <QtGui>
+ #include <QApplication>
+ #include <stdlib.h>
++#include <X11/Xlib.h>
+ 
+ int main(int argc, char *argv[])
+ {
+     setenv("LC_NUMERIC","C",1); /* always use "." for floating point */
++    XInitThreads();
+     QApplication a(argc, argv);
+     lin_guider w;
+     w.show();
+diff -Nur lin_guider_pack/lin_guider/src/params.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/params.cpp
+--- lin_guider_pack/lin_guider/src/params.cpp	2019-12-13 19:34:18.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/params.cpp	2021-03-10 22:26:34.251673200 +0800
+@@ -464,6 +464,9 @@
+ 		log_i( "Next IO device was changed, so - current device config is not saved" );
+ 	}
+ 
++	/* Force the settings to be written upon exit */
++	settings.sync();
++
+  return true;
+ }
+ 
+diff -Nur lin_guider_pack/lin_guider/src/starspi_calibration.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_calibration.cpp
+--- lin_guider_pack/lin_guider/src/starspi_calibration.cpp	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_calibration.cpp	2021-03-10 22:26:34.280634600 +0800
+@@ -0,0 +1,310 @@
++/*
++ * starspi_calibration.cpp
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "starspi_calibration.h"
++#include "lin_guider.h"
++#include "gmath.h"
++#include "vect.h"
++#include "utils.h"
++
++starspi_calibration::starspi_calibration(lin_guider *parentInstance): m_parent(parentInstance)
++{
++    m_reticle_calib_status = UNCALIBRATED;
++	pthread_mutex_init(&m_calib_status_lock, NULL);
++
++	/* Inherited from rcalibration */
++	auto_drift_time = 25;
++	start_x1 = start_y1 = 0;
++	end_x1 = end_y1 = 0;
++	start_x2 = start_y2 = 0;
++	end_x2 = end_y2 = 0;
++}
++
++starspi_calibration::~starspi_calibration()
++{
++    /* TODO: deinit variables */
++}
++
++void starspi_calibration::setMath(cgmath *math)
++{
++    assert(math);
++    m_math = math;
++}
++
++void starspi_calibration::startDarkCalibration(int no_frames)
++{
++    m_parent->m_video->start_calibration(no_frames);
++}
++
++bool starspi_calibration::getDarkCalibrationStatus()
++{
++    return m_parent->m_video->is_calibrated();
++}
++
++void starspi_calibration::setUseDarkCalibration(bool state)
++{
++    m_parent->m_video->set_use_calibration(state);
++}
++
++void starspi_calibration::setReticleCalibrationStatus(int status)
++{
++    pthread_mutex_lock(&m_calib_status_lock);
++    m_reticle_calib_status = status;
++    pthread_mutex_unlock(&m_calib_status_lock);
++}
++
++int starspi_calibration::getReticleCalibrationStatus()
++{
++    int result;
++
++    pthread_mutex_lock(&m_calib_status_lock);
++    result = m_reticle_calib_status;
++    pthread_mutex_unlock(&m_calib_status_lock);
++    return result;
++}
++
++void starspi_calibration::startReticleCalibration(int driftTime)
++{
++    m_calibration_drift_time = driftTime;
++    if (!checkStartPosition())
++    {
++        m_reticle_calib_status = EDGE_TOO_CLOSE;
++        return;
++    }
++    pthread_create(&m_reticle_calib_thread, NULL, &starspi_calibration::twoAxisReticleCalibrationThread, this);
++}
++
++void* starspi_calibration::twoAxisReticleCalibrationThread(void *param)
++{
++    /* Reference to the object created */
++    starspi_calibration *srvObject = reinterpret_cast<starspi_calibration *>(param);
++    srvObject->twoAxisReticleCalibration();
++    return NULL;
++}
++
++bool starspi_calibration::checkStartPosition()
++{
++    if(!m_math )
++		return false;
++
++	double cur_x, cur_y;
++	m_math->get_star_screen_pos( &cur_x, &cur_y );
++
++	return m_math->is_valid_pos( cur_x, cur_y, FIND_STAR_CLIP_EDGE );
++}
++
++void starspi_calibration::twoAxisReticleCalibration()
++{
++    time_t start_time, t, cur;
++	time_t ra_drift_tm = 0, dec_drift_tm = 0;
++	bool auto_term_ok = false;
++	int turn_back_time;
++	int cnt;
++
++	if( !m_math )
++		return;
++
++    setReticleCalibrationStatus(STARTED);
++
++	//----- automatic mode -----
++	auto_drift_time =m_calibration_drift_time;
++	turn_back_time = auto_drift_time + auto_drift_time / 2;
++	cnt = 0;
++
++	// drop info
++	m_math->clear_speed_info();
++
++	//----- RA axis -----
++	{
++		/* Advance to next step */
++		setReticleCalibrationStatus(RA_DRIFTING);
++
++		// get start point by
++		m_math->get_star_screen_pos( &start_x1, &start_y1 );
++
++		// slow down RA drive to make drift
++		m_parent->m_driver->do_pulse( io_drv::RA_INC_DIR, auto_drift_time*1000 );
++
++		t = start_time = time( NULL );
++		while( (cur = time( NULL )) - start_time < auto_drift_time+1 )
++		{
++			if( cur != t )
++			{
++				//ui.progressBar->setValue( ++cnt );
++				t = cur;
++			}
++			usleep(LOOP_DELAY);
++
++			double cur_x, cur_y;
++			m_math->get_star_screen_pos( &cur_x, &cur_y );
++			if( !m_math->is_valid_pos( cur_x, cur_y ) ) // star is near screen edge! stop drive
++			{
++				m_parent->m_driver->reset();
++				log_i( "Star is near matrix edge. Stopping drive" );
++				break;
++			}
++		}
++		ra_drift_tm = cur - start_time;
++
++		// get end point and calc orientation
++		m_math->get_star_screen_pos( &end_x1, &end_y1 );
++
++		// accelerate RA drive to return to start position
++		m_parent->m_driver->do_pulse( io_drv::RA_DEC_DIR, turn_back_time*1000 );
++
++		setReticleCalibrationStatus(RA_RUNNING_BACK);
++
++		double phi = m_math->calc_phi( start_x1, start_y1, end_x1, end_y1 );
++		Matrix ROT_Z = RotateZ( -M_PI*phi/180.0 ); // derotates...
++
++		// wait until returning
++		t = start_time = time( NULL );
++		while( (cur = time( NULL )) - start_time < turn_back_time )
++		{
++			if( cur != t )
++			{
++				//ui.progressBar->setValue( ++cnt );
++				t = cur;
++			}
++			usleep(LOOP_DELAY);
++
++			//----- Z-check (new!) -----
++			double cur_x, cur_y;
++			m_math->get_star_screen_pos( &cur_x, &cur_y );
++			Vector star_pos = Vector( cur_x, cur_y, 0 ) - Vector( start_x1, start_y1, 0 );
++			star_pos.y = -star_pos.y;
++			star_pos = star_pos * ROT_Z;
++
++			// start point reached... so exit
++			if( star_pos.x <= 0 )
++			{
++				m_parent->m_driver->reset();
++				auto_term_ok = true;
++				break;
++			}
++			//----- Z-check end -----
++		}
++		ra_drift_tm = std::max( cur - start_time, ra_drift_tm );
++
++		//if( !auto_term_ok )
++			//QMessageBox::warning( this, tr("Warning"), tr("RA: Scope can't reach the start point in ") + QString().number(turn_back_time) + tr("secs.\nPossible mount or drive problems..."), QMessageBox::Ok );
++	}
++
++	//----- DEC axis -----
++	{
++		setReticleCalibrationStatus(DEC_DRIFTING);
++
++		// get start point by
++		m_math->get_star_screen_pos( &start_x2, &start_y2 );
++
++		// DEC+ drive to make drift
++		m_parent->m_driver->do_pulse( io_drv::DEC_INC_DIR, auto_drift_time*1000 );
++
++		t = start_time = time( NULL );
++		while( (cur = time( NULL )) - start_time < auto_drift_time+1 )
++		{
++			if( cur != t )
++			{
++				//ui.progressBar->setValue( ++cnt );
++				t = cur;
++			}
++			usleep(LOOP_DELAY);
++
++			double cur_x, cur_y;
++			m_math->get_star_screen_pos( &cur_x, &cur_y );
++			if( !m_math->is_valid_pos( cur_x, cur_y ) ) // star is near screen edge! stop drive
++			{
++				m_parent->m_driver->reset();
++				log_i( "Star is near matrix edge. Stopping drive" );
++				break;
++			}
++		}
++		dec_drift_tm = cur - start_time;
++
++		// get end point and calc orientation
++		m_math->get_star_screen_pos( &end_x2, &end_y2 );
++
++		// DEC- drive to return to start position
++		m_parent->m_driver->do_pulse( io_drv::DEC_DEC_DIR, turn_back_time*1000 );
++
++		setReticleCalibrationStatus(DEC_RUNNING_BACK);
++
++		double phi = m_math->calc_phi( start_x2, start_y2, end_x2, end_y2 );
++		Matrix ROT_Z = RotateZ( -M_PI*phi/180.0 ); // derotates...
++
++		// wait until returning
++		t = start_time = time( NULL );
++		while( (cur = time( NULL )) - start_time < turn_back_time )
++		{
++			if( cur != t )
++			{
++				//ui.progressBar->setValue( ++cnt );
++				t = cur;
++			}
++			usleep(LOOP_DELAY);
++
++			//----- Z-check (new!) -----
++			double cur_x, cur_y;
++			m_math->get_star_screen_pos( &cur_x, &cur_y );
++			Vector star_pos = Vector( cur_x, cur_y, 0 ) - Vector( start_x2, start_y2, 0 );
++			star_pos.y = -star_pos.y;
++			star_pos = star_pos * ROT_Z;
++
++			// start point reached... so exit
++			if( star_pos.x <= 0 )
++			{
++				m_parent->m_driver->reset();
++				auto_term_ok = true;
++				break;
++			}
++			//----- Z-check end -----
++		}
++		dec_drift_tm = std::max( cur - start_time, dec_drift_tm );
++
++		if( !auto_term_ok )
++		{
++		    /* Set warning: DEC: Scope can't reach the start point */
++		}
++	}
++
++	log_i("RA: sx1=%f sy1=%f ex1=%f ey1=%f DEC: sx2=%f sy2=%f ex2=%f ey2=%f", start_x1, start_y1, end_x1, end_y1, start_x2, start_y2, end_x2, end_y2);
++
++	// calc orientation
++	bool swap_dec = false;
++	if( m_math->calc_and_set_reticle2( start_x1, start_y1, end_x1, end_y1, start_x2, start_y2, end_x2, end_y2, &swap_dec, ra_drift_tm, dec_drift_tm ) )
++	{
++		if( swap_dec )
++		{
++			m_parent->m_driver->swap_dec_bits();
++			log_i( "DEC control bits swapped" );
++		}
++
++		/* Status DONE */
++		setReticleCalibrationStatus(DONE);
++	}
++	else
++	{
++	    /* Error state, calibration rejected, Start drift is too short */
++	    setReticleCalibrationStatus(REJECTED);
++	}
++}
++
+diff -Nur lin_guider_pack/lin_guider/src/starspi_camera.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_camera.cpp
+--- lin_guider_pack/lin_guider/src/starspi_camera.cpp	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_camera.cpp	2021-03-10 22:26:34.286710100 +0800
+@@ -0,0 +1,137 @@
++/*
++ * starspi_camera.cpp
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "starspi_camera.h"
++#include "lin_guider.h"
++#include "utils.h"
++#include "video.h"
++
++starspi_camera::starspi_camera(lin_guider *parentInstance):m_parent(parentInstance)
++{
++    //m_camera_connected = NOT_CONNECTED;
++    /* Initialize variables */
++    pthread_mutex_init(&m_img_resource_lock, NULL);
++}
++
++starspi_camera::~starspi_camera()
++{
++}
++
++void starspi_camera::transferImage(unsigned char *imageBuffer)
++{
++    /* Protect the memory and create local copy of the image */
++    pthread_mutex_lock(&m_img_resource_lock);
++	memcpy(m_image_buffer, imageBuffer, IMG_WIDTH*IMG_HEIGHT*PIXEL_DATA_SIZE);
++	pthread_mutex_unlock(&m_img_resource_lock);
++}
++
++int starspi_camera::getConvertedImage(char size, char *output)
++{
++    /* Local buffer to convert the 4byte/pixel image to 1byte/pixel */
++    char imageBuffer[IMG_WIDTH*IMG_HEIGHT];
++    int retValue;
++    /* Image manipulation variables */
++    int startRow, endRow, pixel;
++
++    /* Convert the 4byte/pixel to 1byte/pixel */
++    pthread_mutex_lock(&m_img_resource_lock);
++    for (int i=0; i<VGA_SIZE; i++)
++    {
++        imageBuffer[i] = char(m_image_buffer[(i*4)+1]);
++    }
++    pthread_mutex_unlock(&m_img_resource_lock);
++
++    if (size == VGA_RES)
++    {
++        /* We don't need crunching, just copy back the data */
++        memcpy(output, imageBuffer, VGA_SIZE);
++        retValue = VGA_SIZE;
++    }
++    else
++    {
++        /* Compress to QVGA into the output buffer */
++        for(int i=0; i<IMG_HEIGHT/2; i++)
++        {
++            startRow = (2*i)*IMG_WIDTH;
++            endRow = (2*i+1)*IMG_WIDTH;
++            for (int j=0; j<IMG_WIDTH/2; j++)
++            {
++                pixel = imageBuffer[startRow+(j*2)] + imageBuffer[startRow+(j*2)+1] +
++                        imageBuffer[endRow + (j*2)] + imageBuffer[endRow + (j*2)+1];
++                pixel /= 4;
++
++                output[IMG_WIDTH/2*i+j] = (char)pixel;
++            }
++        }
++        retValue = QVGA_SIZE;
++    }
++
++    return retValue;
++}
++
++void starspi_camera::setCameraExposureGain(int cameraExposure, int cameraGain)
++{
++	video_drv::post_param_t prm;
++	video_drv::param_val_t val;
++
++	memset( &prm, 0, sizeof(video_drv::post_param_t) );
++
++    m_capture_params.exposure = cameraExposure;
++
++    m_capture_params.gain = cameraGain;
++
++    val.set(m_capture_params.exposure);
++    m_parent->m_video->pack_params(video_drv::CI_EXPO, val, &prm);
++    val.set(m_capture_params.gain);
++    m_parent->m_video->pack_params(video_drv::CI_GAIN, val, &prm);
++    m_parent->m_video->post_params(prm);
++    m_parent->m_capture_params = m_capture_params;
++}
++
++int starspi_camera::getMaxExposure()
++{
++	video_drv::cam_control_t *control = NULL;
++
++	control = m_parent->m_video->get_cam_control( video_drv::CI_EXPO );
++	if (control)
++		return control->max;
++	else
++		return 0;
++
++}
++
++int starspi_camera::getMaxGain()
++{
++	video_drv::cam_control_t *control = NULL;
++
++	control = m_parent->m_video->get_cam_control( video_drv::CI_GAIN );
++	if (control)
++		return control->max;
++	else
++		return 0;
++
++}
++
++void starspi_camera::setMaxFrameTime(char seconds)
++{
++
++}
+diff -Nur lin_guider_pack/lin_guider/src/starspi_dslr.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_dslr.cpp
+--- lin_guider_pack/lin_guider/src/starspi_dslr.cpp	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_dslr.cpp	2021-03-10 22:26:34.277966300 +0800
+@@ -0,0 +1,326 @@
++/*
++ * starspi_dslr.cpp
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "starspi_dslr.h"
++#include "lin_guider.h"
++#include "utils.h"
++#include "wiringPi.h"
++
++#define NOT_CONNECTED 0
++#define CONNECTED     1
++
++starspi_dslr::starspi_dslr(lin_guider *parentInstance):m_parent(parentInstance)
++{
++    m_camera_connected = NOT_CONNECTED;
++    portinfolist = NULL;
++    abilities = NULL;
++}
++
++starspi_dslr::~starspi_dslr()
++{
++}
++
++void starspi_dslr::errorFunc (GPContext *context, const char *format, va_list args, void *data)
++{
++    fprintf(stderr, "*** Contexterror ***\n");
++    vfprintf(stderr, format, args);
++    fprintf(stderr, "\n");
++}
++
++void starspi_dslr::messageFunc (GPContext *context, const char *format, va_list args, void *data)
++{
++    vprintf(format, args);
++    printf("\n");
++}
++
++int starspi_dslr::lookupWidget(CameraWidget*widget, const char *key, CameraWidget **child)
++{
++	int ret;
++	ret = gp_widget_get_child_by_name (widget, key, child);
++	if (ret < GP_OK)
++		ret = gp_widget_get_child_by_label (widget, key, child);
++	return ret;
++}
++
++int starspi_dslr::getConfigValueString(Camera *camera, const char *key, char **str, GPContext *context)
++{
++	CameraWidget		*widget = NULL, *child = NULL;
++	CameraWidgetType	type;
++	int			ret;
++	char			*val;
++
++	ret = gp_camera_get_config (camera, &widget, context);
++	if (ret < GP_OK) {
++		fprintf (stderr, "camera_get_config failed: %d\n", ret);
++		return ret;
++	}
++	ret = lookupWidget (widget, key, &child);
++	if (ret < GP_OK) {
++		fprintf (stderr, "lookup widget failed: %d\n", ret);
++		goto out;
++	}
++
++	/* This type check is optional, if you know what type the label
++	 * has already. If you are not sure, better check. */
++	ret = gp_widget_get_type (child, &type);
++	if (ret < GP_OK) {
++		fprintf (stderr, "widget get type failed: %d\n", ret);
++		goto out;
++	}
++	switch (type) {
++        case GP_WIDGET_MENU:
++        case GP_WIDGET_RADIO:
++        case GP_WIDGET_TEXT:
++		break;
++	default:
++		fprintf (stderr, "widget has bad type %d\n", type);
++		ret = GP_ERROR_BAD_PARAMETERS;
++		goto out;
++	}
++
++	/* This is the actual query call. Note that we just
++	 * a pointer reference to the string, not a copy... */
++	ret = gp_widget_get_value (child, &val);
++	if (ret < GP_OK) {
++		fprintf (stderr, "could not query widget value: %d\n", ret);
++		goto out;
++	}
++	/* Create a new copy for our caller. */
++	*str = strdup (val);
++out:
++	gp_widget_free (widget);
++	return ret;
++}
++
++int starspi_dslr::setConfigValueString (Camera *camera, const char *key, const char *val, GPContext *context)
++{
++	CameraWidget		*widget = NULL, *child = NULL;
++	CameraWidgetType	type;
++	int			ret;
++
++	ret = gp_camera_get_config (camera, &widget, context);
++	if (ret < GP_OK) {
++		fprintf (stderr, "camera_get_config failed: %d\n", ret);
++		return ret;
++	}
++	ret = lookupWidget (widget, key, &child);
++	if (ret < GP_OK) {
++		fprintf (stderr, "lookup widget failed: %d\n", ret);
++		goto out;
++	}
++
++	/* This type check is optional, if you know what type the label
++	 * has already. If you are not sure, better check. */
++	ret = gp_widget_get_type (child, &type);
++	if (ret < GP_OK) {
++		fprintf (stderr, "widget get type failed: %d\n", ret);
++		goto out;
++	}
++	switch (type) {
++        case GP_WIDGET_MENU:
++        case GP_WIDGET_RADIO:
++        case GP_WIDGET_TEXT:
++		break;
++	default:
++		fprintf (stderr, "widget has bad type %d\n", type);
++		ret = GP_ERROR_BAD_PARAMETERS;
++		goto out;
++	}
++
++	/* This is the actual set call. Note that we keep
++	 * ownership of the string and have to free it if necessary.
++	 */
++	ret = gp_widget_set_value (child, val);
++	if (ret < GP_OK) {
++		fprintf (stderr, "could not set widget value: %d\n", ret);
++		goto out;
++	}
++	/* This stores it on the camera again */
++	ret = gp_camera_set_config (camera, widget, context);
++	if (ret < GP_OK) {
++		fprintf (stderr, "camera_set_config failed: %d\n", ret);
++		return ret;
++	}
++out:
++	gp_widget_free (widget);
++	return ret;
++}
++
++int starspi_dslr::openCamera(Camera **camera, const char *model, const char *port, GPContext *context)
++{
++    int		ret, m, p;
++	CameraAbilities	a;
++	GPPortInfo	pi;
++
++	ret = gp_camera_new (camera);
++	if (ret < GP_OK) return ret;
++
++    /* Load all the camera drivers we have... */
++    ret = gp_abilities_list_new (&abilities);
++    if (ret < GP_OK) return ret;
++    ret = gp_abilities_list_load (abilities, context);
++    if (ret < GP_OK) return ret;
++
++	/* First lookup the model / driver */
++    m = gp_abilities_list_lookup_model (abilities, model);
++	if (m < GP_OK) return ret;
++
++    ret = gp_abilities_list_get_abilities (abilities, m, &a);
++	if (ret < GP_OK) return ret;
++
++    ret = gp_camera_set_abilities (*camera, a);
++	if (ret < GP_OK) return ret;
++
++
++    /* Load all the port drivers we have... */
++    ret = gp_port_info_list_new (&portinfolist);
++    if (ret < GP_OK) return ret;
++    ret = gp_port_info_list_load (portinfolist);
++    if (ret < 0) return ret;
++    ret = gp_port_info_list_count (portinfolist);
++    if (ret < 0) return ret;
++
++
++	/* Then associate the camera with the specified port */
++    p = gp_port_info_list_lookup_path (portinfolist, port);
++    switch (p) {
++        case GP_ERROR_UNKNOWN_PORT:
++                fprintf (stderr, "The port you specified "
++                        "('%s') can not be found. Please "
++                        "specify one of the ports found by "
++                        "'gphoto2 --list-ports' and make "
++                        "sure the spelling is correct "
++                        "(i.e. with prefix 'serial:' or 'usb:').",
++                                port);
++                break;
++        default:
++                break;
++    }
++    if (p < GP_OK) return p;
++
++    ret = gp_port_info_list_get_info (portinfolist, p, &pi);
++    if (ret < GP_OK) return ret;
++    ret = gp_camera_set_port_info (*camera, pi);
++    if (ret < GP_OK) return ret;
++
++	return GP_OK;
++
++}
++
++void starspi_dslr::closeCameras()
++{
++
++}
++
++void starspi_dslr::openShutter()
++{
++    int ret, i;
++    const char	*name, *value;
++
++    /* Init the camera on USB */
++    m_context = gp_context_new();
++
++    /* Install callbacks */
++    gp_context_set_error_func(m_context, (GPContextErrorFunc)errorFunc, NULL);
++    gp_context_set_message_func(m_context, (GPContextMessageFunc)messageFunc, NULL);
++
++    ret = gp_list_new (&list);
++	if (ret < GP_OK) return;
++
++    gp_list_reset(list);
++	m_camera_count = gp_camera_autodetect(list, m_context);
++	if (m_camera_count == 0) {
++		log_i("No cameras detected");
++		return;
++	}
++
++	for (i = 0; i < m_camera_count; i++) {
++        gp_list_get_name  (list, i, &name);
++        gp_list_get_value (list, i, &value);
++        ret = openCamera(&(m_camera_list[i]), name, value, m_context);
++        if (ret < GP_OK)
++            log_i("Camera %s on port %s failed to open", name, value);
++        else
++            log_i("Capturing on: %s", name);
++    }
++
++    for (i = 0; i < m_camera_count; i++) {
++        setConfigValueString (m_camera_list[i], "capturetarget", "Memory card", m_context);
++        setConfigValueString (m_camera_list[i], "eosremoterelease", "Immediate", m_context);
++    }
++
++    m_camera_connected = CONNECTED;
++}
++
++void starspi_dslr::closeShutter()
++{
++    int i;
++
++    if (m_camera_connected == CONNECTED) {
++        log_i("Executing close code");
++        for (i = 0; i < m_camera_count; i++) {
++            setConfigValueString (m_camera_list[i], "eosremoterelease", "Release Full", m_context);
++            gp_camera_unref(m_camera_list[i]);
++        }
++        gp_context_unref(m_context);
++        m_camera_connected = NOT_CONNECTED;
++    }
++}
++
++int starspi_dslr::fillCameraInfo(char *buffer)
++{
++    int ret, i;
++    const char	*name, *value;
++
++    /* Be sure to set the camera number to zero */
++    memset(buffer, 0, 1+8*20);
++
++    /* Init the camera on USB */
++    m_context = gp_context_new();
++
++    /* Install callbacks */
++    gp_context_set_error_func(m_context, (GPContextErrorFunc)errorFunc, NULL);
++    gp_context_set_message_func(m_context, (GPContextMessageFunc)messageFunc, NULL);
++
++    ret = gp_list_new (&list);
++	if (ret < GP_OK) return 1;
++
++    gp_list_reset(list);
++	m_camera_count = gp_camera_autodetect(list, m_context);
++
++	if (m_camera_count == 0) {
++		return 1;
++	}
++
++    buffer[0] = (char)m_camera_count;
++	for (i = 0; i < m_camera_count; i++) {
++        gp_list_get_name  (list, i, &name);
++        memcpy(buffer+1+20*i, name, strlen(name));
++    }
++
++    for (i = 0; i < m_camera_count; i++) {
++        gp_camera_unref(m_camera_list[i]);
++    }
++    gp_context_unref(m_context);
++
++    return (20*m_camera_count+1);
++}
+diff -Nur lin_guider_pack/lin_guider/src/starspi_guider.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_guider.cpp
+--- lin_guider_pack/lin_guider/src/starspi_guider.cpp	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_guider.cpp	2021-03-10 22:26:34.275197100 +0800
+@@ -0,0 +1,229 @@
++/*
++ * starspi_guider.cpp
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "starspi_guider.h"
++#include "lin_guider.h"
++#include "utils.h"
++
++starspi_guider::starspi_guider(lin_guider *parentInstance, io_drv::cio_driver_base *driver):
++    m_parent(parentInstance),
++    m_driver(driver),
++    m_is_guiding(false),
++    m_guiding_stability(0)
++
++{
++    pthread_mutex_init(&m_guiding_mutex, NULL);
++    pthread_mutex_init(&m_driftdata_mutex, NULL);
++}
++
++
++starspi_guider::~starspi_guider()
++{
++    /* TODO: deinit variables */
++}
++
++void starspi_guider::setMath(cgmath *math)
++{
++    assert(math);
++    m_math = math;
++}
++
++void starspi_guider::set_is_guiding(bool state)
++{
++    pthread_mutex_lock(&m_guiding_mutex);
++    m_is_guiding = state;
++    pthread_mutex_unlock(&m_guiding_mutex);
++}
++
++bool starspi_guider::get_is_guiding()
++{
++    bool result;
++
++    pthread_mutex_lock(&m_guiding_mutex);
++    result = m_is_guiding;
++    pthread_mutex_unlock(&m_guiding_mutex);
++    return result;
++}
++
++void starspi_guider::startGuiding()
++{
++    set_is_guiding(true);
++    m_math->start();
++}
++
++void starspi_guider::stopGuiding()
++{
++    set_is_guiding(false);
++    m_math->stop();
++    m_driver->reset();
++}
++
++bool starspi_guider::isGuiding()
++{
++    return get_is_guiding();
++}
++
++void starspi_guider::setSquareSize(int size)
++{
++    m_math->resize_square(size);
++}
++
++void starspi_guider::setGuideRateAndThreshold(int rate, int threshold)
++{
++    float guide_rate;
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    /* Guide rate */
++    switch (rate) {
++        case 0: guide_rate = 0.125;
++            break;
++
++        case 1: guide_rate = 0.25;
++            break;
++
++        case 2: guide_rate = 0.5;
++            break;
++
++        case 3: guide_rate = 0.75;
++            break;
++
++        case 4: guide_rate = 1;
++            break;
++    }
++    in_params->guiding_rate = guide_rate;
++
++    /* Threshold algo */
++    m_math->set_square_algorithm_index(threshold);
++}
++
++void starspi_guider::setCorrectionDirections(int ra, int dec)
++{
++    bool ra_plus, ra_minus;
++    bool dec_plus, dec_minus;
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    ra_plus  = (ra & 0xFF00) == 0xFF00;
++    ra_minus = (ra & 0x00FF) == 0x00FF;
++    dec_plus  = (dec & 0xFF00) == 0xFF00;
++    dec_minus = (dec & 0x00FF) == 0x00FF;
++
++    in_params->enabled_dir_sign[RA][SGN_POS] = ra_plus;
++    in_params->enabled_dir_sign[RA][SGN_NEG] = ra_minus;
++    in_params->enabled_dir_sign[DEC][SGN_POS] = dec_plus;
++    in_params->enabled_dir_sign[DEC][SGN_NEG] = dec_minus;
++
++    if (ra_plus || ra_minus)
++        in_params->enabled_dir[RA] = true;
++    else
++        in_params->enabled_dir[RA] = false;
++
++    if (dec_plus || dec_minus)
++        in_params->enabled_dir[DEC] = true;
++    else
++        in_params->enabled_dir[DEC] = false;
++
++    m_math->calc_dir_checker();
++}
++
++void starspi_guider::setAccumulationFrames(int ra, int dec)
++{
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    in_params->accum_frame_cnt[RA]  = ra;
++    in_params->accum_frame_cnt[DEC] = dec;
++
++}
++
++void starspi_guider::setProportionalGains(int ra, int dec)
++{
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    in_params->proportional_gain[RA] = (float)(ra) / 10.0;
++    in_params->proportional_gain[DEC] = (float)(dec) / 10.0;
++}
++
++void starspi_guider::setIntegralGains(int ra, int dec)
++{
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    in_params->integral_gain[RA] = (float)(ra) / 10.0;
++    in_params->integral_gain[DEC] = (float)(dec) / 10.0;
++}
++
++void starspi_guider::setMaximumPulses(int ra, int dec)
++{
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    in_params->max_pulse_length[RA] = ra;
++    in_params->max_pulse_length[DEC] = dec;
++}
++
++void starspi_guider::setMinimumPulses(int ra, int dec)
++{
++    cproc_in_params *in_params = m_math->get_in_params();
++
++    in_params->min_pulse_length[RA] = ra;
++    in_params->min_pulse_length[DEC] = dec;
++}
++
++void starspi_guider::getDriftData(int *raDrift, int *decDrift, int *raRMS, int* decRMS)
++{
++    pthread_mutex_lock(&m_driftdata_mutex);
++    *raDrift = m_drift_RA;
++    *decDrift = m_drift_DEC;
++    *raRMS = m_RMS_RA;
++    *decRMS = m_RMS_DEC;
++    pthread_mutex_unlock(&m_driftdata_mutex);
++}
++
++void starspi_guider::guiderCallback()
++{
++    const cproc_out_params *out = NULL;
++    double drift_x = 0, drift_y = 0;
++
++    assert( m_math );
++	/* calc math. it tracks square */
++	m_math->do_processing();
++
++	/* If not guiding, exit here */
++	if (!get_is_guiding())
++        return;
++
++    /* Do pulse */
++    out = m_math->get_out_params();
++    m_driver->do_pulse( out->pulse_dir[RA], out->pulse_length[RA], out->pulse_dir[DEC], out->pulse_length[DEC] );
++
++    /* Get the drift data */
++    m_math->get_star_drift( &drift_x, &drift_y );
++    pthread_mutex_lock(&m_driftdata_mutex);
++    m_drift_RA = (int)(drift_x*1000)+30000;
++    m_drift_DEC = (int)(drift_y*1000)+30000;
++    m_RMS_RA = (int)(out->sigma[RA]*1000);
++    m_RMS_DEC = (int)(out->sigma[DEC]*1000);
++    pthread_mutex_unlock(&m_driftdata_mutex);
++
++    /* Save quality rate for later use */
++    m_quality_rate =  m_math->calc_quality_rate();
++
++    /* Save guiding stability for later use */
++    m_guiding_stability = m_math->calc_stability_rate();
++}
+diff -Nur lin_guider_pack/lin_guider/src/starspi_server.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_server.cpp
+--- lin_guider_pack/lin_guider/src/starspi_server.cpp	1970-01-01 08:00:00.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/starspi_server.cpp	2021-03-10 22:26:34.284545800 +0800
+@@ -0,0 +1,593 @@
++/*
++ * starspi_server.cpp
++ *
++ *      Author: Zsolt Nagy
++ *
++ *
++ * This file is designed to be used with Lin_guider.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <stdlib.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <netinet/tcp.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <fcntl.h>
++#include <errno.h>
++
++#include "starspi_server.h"
++#include "lin_guider.h"
++#include "utils.h"
++#include "video.h"
++
++#define ERR_OK          (0u)
++#define ERR_BAD_LENGTH  (1u)
++#define ERR_READ_FAILED (2u)
++
++starspi_server::starspi_server(lin_guider *parentInstance):m_parent(parentInstance)
++{
++}
++
++starspi_server::~starspi_server()
++{
++    stopServer();
++}
++
++void starspi_server::startServer()
++{
++    /* Initialize variables */
++    pthread_mutex_init(&m_hw_status_resource_lock, NULL);
++    /* Create new thread */
++	pthread_create(&m_network_thread, NULL, &starspi_server::networkThread, this);
++	log_i("StarsPi server started");
++}
++
++void starspi_server::stopServer()
++{
++
++}
++
++void* starspi_server::networkThread(void *param)
++{
++    /* Reference to the object created */
++    starspi_server *srvObject = reinterpret_cast<starspi_server *>(param);
++
++    /* Flag which quits the endless loop of the thread on request */
++    char quitFlag = 0;
++    bool is_restart =false;
++
++    /* Socket handles */
++    int listenSocket, clientSocket;
++
++    /* Structure to hold socket information */
++    struct sockaddr_in serverSocketAddr, clientSocketAddr;
++    socklen_t clientSocketAddressLen;
++
++    /* Byte array to hold the received data */
++    char inputBuffer[RX_BUFFER_SIZE];
++    /* Max response is the VGA image, set output buffer accordingly */
++    char outputBuffer[HEADER_SIZE+IMG_WIDTH*IMG_HEIGHT];
++
++    /* Used to extract header information */
++    header rxHeader, txHeader;
++
++    log_i("StarsPi thread started");
++
++    /* Init server socket structure*/
++    memset((char *) &serverSocketAddr, 0, sizeof(serverSocketAddr));
++    serverSocketAddr.sin_family = AF_INET;
++	serverSocketAddr.sin_port = htons(5555);
++	serverSocketAddr.sin_addr.s_addr = INADDR_ANY;
++
++	/* Init client socket related stuff */
++	clientSocketAddressLen =sizeof(clientSocketAddr);
++
++	/* Init response header */
++	txHeader.magicNumber = htons(MAGIC_NUMBER);
++
++	/* Create listening socket */
++	listenSocket = socket(AF_INET, SOCK_STREAM, 0);
++	/* Set appropiate parameters for the socket */
++	srvObject->setSocketOptions(listenSocket);
++	/* Bind the newly created socket */
++	bind(listenSocket, (struct sockaddr*) &serverSocketAddr, sizeof(serverSocketAddr));
++	/* Start listening */
++	listen(listenSocket, 5);
++
++	while (quitFlag == 0)
++	{
++	    /* Wait for incoming connection */
++        clientSocket = accept(listenSocket, (struct sockaddr*)&clientSocketAddr, &clientSocketAddressLen);
++        if (clientSocket<0)
++		{
++			/* This means we don't have a client */
++			continue;
++		}
++		/* If we reach this point, it means we have a client */
++		log_i("StarsPi client connected.");
++
++        while (quitFlag == 0)
++        {
++            /* Read the header first */
++            if (0 == srvObject->readFromSocket(clientSocket, inputBuffer, HEADER_SIZE))
++            {
++                log_i("Connection reset, cannot read!");
++                break;
++            }
++
++            /* Cast and correct network byte order */
++            memcpy(&rxHeader, inputBuffer, HEADER_SIZE);
++            rxHeader.magicNumber = htons(rxHeader.magicNumber);
++            rxHeader.length = htonl(rxHeader.length);
++
++            /* Message identification */
++            if (!srvObject->checkHeader(&rxHeader))
++            {
++                log_i("Protocol error: data ignored!");
++                continue;
++            }
++
++            /* Read the payload specified by the header */
++            if (0 == srvObject->readFromSocket(clientSocket, inputBuffer, rxHeader.length))
++            {
++                log_i("Invalid payload: data ignored!");
++                continue;
++            }
++
++            /* Prepare response for the received command */
++            txHeader.cmdWord = rxHeader.cmdWord;
++
++            switch (rxHeader.cmdWord)
++            {
++                int responseLength;
++                int param1, param2, param3, param4;
++
++                case GET_IMAGE:
++                    /* First byte of the inputBuffer holds the desired image size */
++                    responseLength = srvObject->m_parent->m_starspi_camera->getConvertedImage(inputBuffer[0], outputBuffer);
++                    /* Swap to network order */
++                    txHeader.length = htonl(responseLength);
++                    /* Send header and payload */
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, responseLength);
++                    break;
++
++                case GET_CAMERA_MAX_VALUES:
++                    /* Two parameters, 2 bytes each */
++                    txHeader.length = htonl(4);
++                    int2ByteArray(srvObject->m_parent->m_starspi_camera->getMaxExposure(),
++                                  srvObject->m_parent->m_starspi_camera->getMaxGain(),
++                                  outputBuffer);
++                    /* Send header and payload */
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    log_i("Camera max values sent");
++                    break;
++
++                case GET_CAMERA_PARAMS:
++                    txHeader.length = htonl(4);
++                    int2ByteArray(srvObject->m_parent->m_capture_params.exposure,
++                                  srvObject->m_parent->m_capture_params.gain,
++                                  outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    break;
++
++                case SET_CAMERA_PARAMS:
++                    txHeader.length = 0;
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->m_starspi_camera->setCameraExposureGain(param1, param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    break;
++
++                case GET_SCOPE_PARAMS:
++                    txHeader.length = htonl(4);
++                    int2ByteArray(srvObject->m_parent->m_guider_params.aperture, srvObject->m_parent->m_guider_params.focal, outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    break;
++
++                case SET_SCOPE_PARAMS:
++                    txHeader.length = 0;
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->m_guider_params.aperture = param1;
++                    srvObject->m_parent->m_guider_params.focal = param2;
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    break;
++
++                case SET_SQUARE_POSITION:
++                    txHeader.length = 0;
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->setGuiderSquareXY(param1+16,param2+16);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    break;
++
++                case START_DARK_CALIBRATION:
++                    txHeader.length = 0;
++                    /* Param2 is not used! */
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->m_starspi_calibration->startDarkCalibration(param1);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    break;
++
++                case GET_DARK_CALIBRATION_STATUS:
++                    txHeader.length = htonl(2);
++                    if (srvObject->m_parent->m_starspi_calibration->getDarkCalibrationStatus())
++                    {
++                        param1 = 1;
++                        srvObject->m_parent->m_starspi_calibration->setUseDarkCalibration(true);
++                    }
++                    else
++                        param1 = 0;
++                    /* Second parameter not used */
++                    int2ByteArray(param1, 0, outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 2);
++                    break;
++
++                case START_RETICLE_CALIBRATION:
++                    txHeader.length = htonl(0);
++                    /* param2 is no used */
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->m_starspi_calibration->startReticleCalibration(param1);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    log_i("Reticle calib started");
++                    break;
++
++                case GET_RETICLE_CALIBRATION_STATUS:
++                    txHeader.length = htonl(2);
++                    param1 = srvObject->m_parent->m_starspi_calibration->getReticleCalibrationStatus();
++                    /* Second parameter not used */
++                    int2ByteArray(param1, 0, outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 2);
++                    log_i("Query reticle calibration: %d", param1);
++                    break;
++
++                case START_GUIDING:
++                    txHeader.length = htonl(0);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->startGuiding();
++                    log_i("Guiding started");
++                    break;
++
++                case STOP_GUIDING:
++                    txHeader.length = htonl(0);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->stopGuiding();
++                    log_i("Guiding stopped");
++                    break;
++
++                case SET_SQUARE_SIZE:
++                    txHeader.length = 0;
++                    /* Param2 is not used! */
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    srvObject->m_parent->m_starspi_guider->setSquareSize(param1);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    break;
++
++
++                case SET_GUIDE_RATE_AND_THRESHOLD:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setGuideRateAndThreshold(param1, param2);
++                    log_i("Guide rate: %d, threshold: %d", param1, param2);
++                    break;
++
++                case SET_CORRECTION_DIRECTIONS:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setCorrectionDirections(param1, param2);
++                    log_i("RA correction: %x, DEC correction: %x", param1, param2);
++                    break;
++
++                case SET_ACCUMULATION_FRAMES:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setAccumulationFrames(param1, param2);
++                    log_i("RA accumulation: %d, DEC accumulation: %d", param1, param2);
++                    break;
++
++                case SET_PROPORTIONAL_GAINS:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setProportionalGains(param1, param2);
++                    log_i("Prop. gain RA: %d, prop. gain DEC: %d", param1, param2);
++                    break;
++
++                case SET_INTEGRAL_GAINS:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setIntegralGains(param1, param2);
++                    log_i("Int. gain RA: %d, int. gain DEC: %d", param1, param2);
++                    break;
++
++                case SET_MAXIMUM_PULSES:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setMaximumPulses(param1, param2);
++                    log_i("Max. pulse RA: %d, max. pulse DEC: %d", param1, param2);
++                    break;
++
++                case SET_MINIMUM_PULSES:
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    srvObject->m_parent->m_starspi_guider->setMinimumPulses(param1, param2);
++                    log_i("Min. pulse RA: %d, min. pulse DEC: %d", param1, param2);
++                    break;
++
++                case GET_DRIFT_DATA:
++                    log_i("Drift data requested!");
++                    txHeader.length = htonl(8);
++                    srvObject->m_parent->m_starspi_guider->getDriftData(&param1, &param2, &param3, &param4);
++                    int2ByteArray(param1, param2, outputBuffer);
++                    int2ByteArray(param3, param4, &(outputBuffer[4]));
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 8);
++                    log_i("Drift data sent!");
++                    break;
++
++                case GET_GUIDE_STATUS:
++                    txHeader.length = htonl(2);
++                    if (srvObject->m_parent->m_starspi_guider->isGuiding())
++                        param1 = 0xFFFF;
++                    else
++                        param1 = 0x00;
++                    /* Second parameter is not used */
++                    int2ByteArray(param1, 0, outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 2);
++                    break;
++
++                case SEND_SHUTDOWN:
++                    txHeader.length = htonl(0);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    quitFlag = 1;
++                    log_i("Shutdown initiated!");
++                    break;
++
++                case OPEN_SHUTTER:
++                    txHeader.length = htonl(4);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    srvObject->m_parent->m_starspi_dslr->openShutter();
++                    log_i("Shutter opened!");
++                    break;
++
++                case CLOSE_SHUTTER:
++                    txHeader.length = htonl(4);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    srvObject->m_parent->m_starspi_dslr->closeShutter();
++                    log_i("Shutter closed!");
++                    break;
++
++                case DITHER:
++                    txHeader.length = htonl(0);
++                    /* Param2 is not used! */
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    log_i("Dithering started, range is: %d", param1);
++                    srvObject->m_parent->m_math->dither_no_wait_xy((float)param1, (float)param1);
++                    break;
++
++                case GET_CAMERA_DRIVER_TYPE:
++                    break;
++
++                case SET_CAMERA_DRIVER_TYPE:
++                {
++                    video_drv::capture_next_params_t next_camera_params;
++                    video_drv::captureparams_t camera_params;
++                    io_drv::device_init_params_t pulse_params;
++
++                    txHeader.length = htonl(0);
++                    byteArray2Int(inputBuffer, &param1, &param2);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++
++                    /* First parameter is the camera type */
++                    camera_params = srvObject->m_parent->m_video->get_capture_params();
++                    if ( camera_params.type != param1) {
++                        next_camera_params.type = param1;
++                        next_camera_params.width = 640;
++                        next_camera_params.height = 480;
++                        srvObject->m_parent->m_video->set_next_params(next_camera_params);
++                        quitFlag = 1;
++                        is_restart = true;
++                    }
++
++                    /* Second is the pulse driver */
++                    pulse_params = srvObject->m_parent->m_driver->get_deviceparams();
++                    /* TODO: change hardcoded values */
++                    switch (param2) {
++                        case 1:
++                            pulse_params.next_device_type = io_drv::DT_NULL;
++                            break;
++
++                        case 2:
++                            pulse_params.next_device_type = io_drv::DT_GPUSB;
++                            break;
++
++                        case 3:
++                            pulse_params.next_device_type = io_drv::DT_GPIO;
++                            break;
++
++                        case 4:
++                            pulse_params.next_device_type = io_drv::DT_NEXSTAR;
++                            break;
++
++                        /* Case 5 is on-camera, so set it according to the camera parameter */
++                        case 5:
++                            switch (param1){
++                                case video_drv::DT_QHY5:
++                                    pulse_params.next_device_type = io_drv::DT_QHY5;
++                                    break;
++
++                                case video_drv::DT_QHY6:
++                                    pulse_params.next_device_type = io_drv::DT_QHY6;
++                                    break;
++
++                                case video_drv::DT_QHY5II:
++                                    pulse_params.next_device_type = io_drv::DT_QHY5II;
++                                    break;
++
++                                case video_drv::DT_ATIK:
++                                    pulse_params.next_device_type = io_drv::DT_ATIK;
++                                    break;
++
++                                case video_drv::DT_SX:
++                                    pulse_params.next_device_type = io_drv::DT_SX;
++                                    break;
++
++                                case video_drv::DT_ASI:
++                                    pulse_params.next_device_type = io_drv::DT_ASI;
++                                    break;
++
++                                default:
++                                    pulse_params.next_device_type = io_drv::DT_NULL;
++                                    break;
++
++                            }
++                            break;
++                    }
++                    if (pulse_params.type != pulse_params.next_device_type) {
++                        log_i("Device set to: %d", pulse_params.next_device_type);
++                        srvObject->m_parent->m_driver->set_deviceparams(pulse_params);
++                        srvObject->m_parent->m_driver->reset();
++                        quitFlag = 1;
++                        is_restart = true;
++                    }
++
++                    log_i("Camera and driver type: %d, %d", param1, param2);
++                    break;
++                }
++
++                case GET_HW_STATUS:
++                    txHeader.length = htonl(4);
++                    param1 = 0x00;
++                    param2 = 0x00;
++                    pthread_mutex_lock(&(srvObject->m_hw_status_resource_lock));
++                    if (srvObject->m_camera_online)
++                        param1 = 0xFFFF;
++                    if (srvObject->m_driver_online)
++                        param2 = 0xFFFF;
++                    pthread_mutex_unlock(&(srvObject->m_hw_status_resource_lock));
++                    int2ByteArray(param1, param2, outputBuffer);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, 4);
++                    break;
++
++                case GET_DSLR_NAMES:
++                    /* Just an aux variable */
++                    param1 = srvObject->m_parent->m_starspi_dslr->fillCameraInfo(outputBuffer);
++                    txHeader.length = htonl(param1);
++                    write(clientSocket, &txHeader, HEADER_SIZE);
++                    write(clientSocket, &outputBuffer, param1);
++                    log_i("Size of the DSLR name array: %d", param1);
++                    break;
++
++            }
++        }
++	}
++
++    log_i("StarsPi server stopped!");
++
++    /* Cleanup */
++    close(clientSocket);
++    close(listenSocket);
++
++    /* Trigger the saving of the parameters and shutdown/restart */
++    srvObject->m_parent->flushAndPowerOff(is_restart);
++
++    return NULL;
++}
++
++void starspi_server::reportHWStatus(bool isCameraOnline, bool isDriverOnline)
++{
++    pthread_mutex_lock(&m_hw_status_resource_lock);
++    m_camera_online = isCameraOnline;
++    m_driver_online = isDriverOnline;
++    pthread_mutex_unlock(&m_hw_status_resource_lock);
++    if (!m_camera_online)
++        log_i("Video not inited!");
++    if (!m_driver_online)
++        log_i("Driver not inited!");
++}
++
++void starspi_server::int2ByteArray(int val1, int val2, char dst[])
++{
++    dst[0] = (val1 >> 8) & 0xFF;
++    dst[1] = val1 & 0xFF;
++    dst[2] = (val2 >> 8) & 0xFF;
++    dst[3] = val2 & 0xFF;
++}
++
++void starspi_server::byteArray2Int(char src[], int *val1, int *val2)
++{
++    *val1 = (src[0]<<8 &0xFF00) | (src[1]&0xFF);
++    *val2 = (src[2]<<8 &0xFF00) | (src[3]&0xFF);
++}
++
++char starspi_server::readFromSocket(int socket, char buffer[], int bytesToRead)
++{
++    int readCnt = 0;
++    int readOffset = 0;
++    char result = 1;
++
++    /* Try to read until correct number of bytes received or error encountered */
++    do
++    {
++        readCnt = read(socket, buffer+readOffset, bytesToRead);
++        readOffset += readCnt;
++    }while ((readOffset == bytesToRead) && (errno == EINTR) && (readCnt<0));
++
++    /* Error occured, return false */
++    if((readOffset != bytesToRead) || (readCnt<0))
++        result = 0;
++
++    return result;
++}
++
++bool starspi_server::checkHeader(header *headerPtr)
++{
++    return headerPtr->magicNumber == MAGIC_NUMBER;
++}
++
++void starspi_server::setSocketOptions(int socket)
++{
++    int on = 1;
++	int result = 0;
++
++    /* On succes 0 is returned, on error -1 */
++	result += setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (void *)&on, sizeof(int));
++	result += setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, (void *)&on, sizeof(int));
++	result += setsockopt(socket, SOL_TCP, TCP_NODELAY, (void *)&on, sizeof(int));
++
++    if (result<0)
++    {
++        /* TODO: error handling */
++    }
++
++}
++
++
+diff -Nur lin_guider_pack/lin_guider/src/video.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/video.cpp
+--- lin_guider_pack/lin_guider/src/video.cpp	2018-03-13 22:31:13.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/video.cpp	2021-03-10 22:26:34.246680400 +0800
+@@ -1296,7 +1296,9 @@
+ 		if( ctrl == CI_GAIN && controls[i].id == V4L2_CID_GAIN )
+ 			return &controls[i];
+ 		else
+-		if( ctrl == CI_EXPO && controls[i].id == V4L2_CID_EXPOSURE )
++		//if( ctrl == CI_EXPO && controls[i].id == V4L2_CID_EXPOSURE )
++		if( ctrl == CI_EXPO && (controls[i].id == V4L2_CID_EXPOSURE_ABSOLUTE ||
++				controls[i].id == V4L2_CID_EXPOSURE) )
+ 			return &controls[i];
+ 		if( ctrl == CI_EXTCTL && controls[i].id == low_ctl_id )
+ 			return &controls[i];
+diff -Nur lin_guider_pack/lin_guider/src/video_dev/video_uvc.cpp lin_guider_pack_starspi_v5.0.1/lin_guider/src/video_dev/video_uvc.cpp
+--- lin_guider_pack/lin_guider/src/video_dev/video_uvc.cpp	2017-02-22 18:07:10.000000000 +0800
++++ lin_guider_pack_starspi_v5.0.1/lin_guider/src/video_dev/video_uvc.cpp	2021-03-10 22:26:34.240763300 +0800
+@@ -219,10 +219,12 @@
+ 	}
+ 
+ 	param_val_t val;
+-	val.set( V4L2_EXPOSURE_AUTO );
++
++	/* Set the manual mode for UVC cameras */
++	val.set( V4L2_EXPOSURE_MANUAL );
+ 	if( set_control( V4L2_CID_EXPOSURE_AUTO, val ) == -1 )
+ 	{
+-		log_e("Unable to set exposure into autoexposure mode");
++		log_e("Unable to set exposure into manual mode");
+ 	}
+ 
+ 
