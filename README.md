@@ -4,7 +4,10 @@ AiGO is Ai = Artificial intelligence, G = Guider , O = Observatory
 ## Support device
 
 * single-board computer (SBC)
-  - Raspberry Pi 3 Model B (RPi3B) | 3 Model B Plus (RPi3B+) BCM43438 (built-in Wi-Fi as AP) | 4 (RPi4)
+  - Raspberry Pi
+    * 3 Model B  (RPi3B)
+    * 3 Model B+ (RPi3B+) BCM43438 (Wi-Fi / BT)
+    * 4 Model B  (RPi4B)  BCM43438 (Wi-Fi / BT)
   - Future
     * Banana Pi M2+ (BPI-M2+)
     * Roseaple Pi (RaPi)
