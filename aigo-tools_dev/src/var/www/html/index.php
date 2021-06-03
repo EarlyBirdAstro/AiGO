@@ -114,7 +114,6 @@ echo "	<table style='background-color: #202020;' align=center>
 	</table>
 ";
 
-// TODO: sumbmit 'Sync Time' , 'Get GPS' , 'noVNC'
 
 if (isset($_POST['synctime'])) {
 	echo "Sync Time";
@@ -146,6 +145,14 @@ if (isset($_POST['synctime'])) {
 	echo "
 	<script>
 		window.location.href = '/DSLR_control/index.php';
+	</script>
+	";
+} elseif (isset($_POST['raspap'])) {
+	echo "RaspAP";
+
+	echo "
+	<script>
+		window.location.href = '/raspap/index.php';
 	</script>
 	";
 }
@@ -210,6 +217,19 @@ echo "			<tr>
 			<tr>
 ";
 */
+
+echo "			<tr>
+			<td>
+				<input type='submit' name='raspap' value='RaspAP' style='width:140px; height:40px; font-weight:bold; font-height:bold; color:$fcolor; border:2px $bcolor double; background-color:#202020;' />
+			</td>
+			<td>
+				The easiest, full-featured wireless router setup.
+				<br>
+				使用 RaspAP 透過瀏覽器來設定無線路由
+
+			</td>
+			</tr>
+";
 
 echo "		</table>
 	</form>

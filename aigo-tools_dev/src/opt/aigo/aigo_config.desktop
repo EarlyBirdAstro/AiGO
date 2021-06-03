@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=AiGO Config
 Comment=AiGO Software Configuration Tool
-Exec=lxterminal --geometry=100x30 -e "bash -c \"sudo /usr/local/bin/aigo_config\""
-Icon=aigo.png
-Terminal=true
+Exec=lxterminal --geometry=100x30 -e "sudo /usr/local/bin/aigo_config"
+Icon=/usr/local/share/pixmaps/aigo.png
+Terminal=false
 Type=Application
 StartupNotify=false
 Categories=System;

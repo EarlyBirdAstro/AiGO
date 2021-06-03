@@ -1,7 +1,9 @@
 #!/bin/sh
 
-reboot_pi () {
-  umount /boot
+BOOT_PART=/boot/firmware
+
+reboot_aigo () {
+  umount $BOOT_PART
   mount / -o remount,ro
   sync
   if [ "$NOOBS" = "1" ]; then
@@ -22,7 +24,7 @@ check_commands () {
       sleep 5
       return 1
   fi
-  for COMMAND in grep cut sed parted fdisk findmnt partprobe; do
+  for COMMAND in grep cut sed parted fdisk findmnt; do
     if ! command -v $COMMAND > /dev/null; then
       FAIL_REASON="$COMMAND not found"
       return 1
@@ -46,7 +48,7 @@ get_variables () {
   ROOT_DEV="/dev/${ROOT_DEV_NAME}"
   ROOT_PART_NUM=$(cat "/sys/block/${ROOT_DEV_NAME}/${ROOT_PART_NAME}/partition")
 
-  BOOT_PART_DEV=$(findmnt /boot -o source -n)
+  BOOT_PART_DEV=$(findmnt "$BOOT_PART" -o source -n)
   BOOT_PART_NAME=$(echo "$BOOT_PART_DEV" | cut -d "/" -f 3)
   BOOT_DEV_NAME=$(echo /sys/block/*/"${BOOT_PART_NAME}" | cut -d "/" -f 4)
   BOOT_PART_NUM=$(cat "/sys/block/${BOOT_DEV_NAME}/${BOOT_PART_NAME}/partition")
@@ -75,10 +77,24 @@ get_variables () {
 }
 
 fix_partuuid() {
-  DISKID="$(fdisk -l "$ROOT_DEV" | sed -n 's/Disk identifier: 0x\([^ ]*\)/\1/p')"
+  mount -o remount,rw "$ROOT_PART_DEV"
+  mount -o remount,rw "$BOOT_PART_DEV"
+  DISKID="$(tr -dc 'a-f0-9' < /dev/hwrng | dd bs=1 count=8 2>/dev/null)"
+  fdisk "$ROOT_DEV" > /dev/null <<EOF
+x
+i
+0x$DISKID
+r
+w
+EOF
+  if [ "$?" -eq 0 ]; then
+    sed -i "s/${OLD_DISKID}/${DISKID}/g" /etc/fstab
+    sed -i "s/${OLD_DISKID}/${DISKID}/" /boot/cmdline.txt
+    sync
+  fi
 
-  sed -i "s/${OLD_DISKID}/${DISKID}/g" /etc/fstab
-  sed -i "s/${OLD_DISKID}/${DISKID}/" /boot/cmdline.txt
+  mount -o remount,ro "$ROOT_PART_DEV"
+  mount -o remount,ro "$BOOT_PART_DEV"
 }
 
 check_variables () {
@@ -124,6 +140,22 @@ check_kernel () {
   NEW_KERNEL=1
 }
 
+aigo_parted () {
+
+  echo "Resizing partition ${2} on ${1} with new end ${3}"
+  parted "${1}" ---pretend-input-tty <<EOF
+u
+s
+resizepart
+${2}
+Yes
+${3}
+quit
+EOF
+
+echo "Done"
+}
+
 main () {
   get_variables
 
@@ -142,7 +174,7 @@ main () {
   fi
 
   if [ "$ROOT_PART_END" -eq "$TARGET_END" ]; then
-    reboot_pi
+    reboot_aigo
   fi
 
   if [ "$NOOBS" = "1" ]; then
@@ -152,43 +184,44 @@ main () {
     fi
   fi
 
-  if ! parted -m "$ROOT_DEV" u s resizepart "$ROOT_PART_NUM" "$TARGET_END"; then
+  #if ! parted -m "$ROOT_DEV" u s resizepart "$ROOT_PART_NUM" "$TARGET_END"; then
+  if ! aigo_parted "$ROOT_DEV" "$ROOT_PART_NUM" "$TARGET_END"; then
     FAIL_REASON="Root partition resize failed"
     return 1
   fi
 
-  partprobe "$ROOT_DEV"
   fix_partuuid
 
   return 0
 }
 
-mount -t proc proc /proc
-mount -t sysfs sys /sys
+#mount -t proc proc /proc
+#mount -t sysfs sys /sys
 mount -t tmpfs tmp /run
 mkdir -p /run/systemd
 
-mount /boot
-mount / -o remount,rw
+mount $BOOT_PART
+mount / -o remount,ro
 
-sed -i 's| init=/opt/aigo/aigo_init-resize.sh||' /boot/cmdline.txt
-if ! grep -q splash /boot/cmdline.txt; then
-  sed -i "s/ quiet//g" /boot/cmdline.txt
+sed -i 's| init=/opt/aigo/aigo_init-resize.sh||' $BOOT_PART/cmdline.txt
+if ! grep -q splash $BOOT_PART/cmdline.txt; then
+  sed -i "s/ quiet//g" $BOOT_PART/cmdline.txt
 fi
+mount $BOOT_PART -o remount,ro
 sync
 
 echo 1 > /proc/sys/kernel/sysrq
 
 if ! check_commands; then
-  reboot_pi
+  reboot_aigo
 fi
 
 if main; then
   whiptail --infobox "Resized root filesystem. Rebooting in 5 seconds..." 20 60
   sleep 5
 else
-  sleep 5
   whiptail --msgbox "Could not expand filesystem, please try raspi-config or rc_gui.\n${FAIL_REASON}" 20 60
+  sleep 5
 fi
 
-reboot_pi
+reboot_aigo

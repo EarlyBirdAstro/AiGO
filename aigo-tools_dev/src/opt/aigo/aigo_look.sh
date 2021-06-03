@@ -8,6 +8,6 @@ cpuFreq=$(sudo cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq)
 cpuFreqM=$(($cpuFreq/1000))
 echo CPU current frequency"="$cpuFreqM" MHz"
 echo CPU temp"="$cpuTemp1"."$cpuTempM"'C"
-echo GPU $(/opt/vc/bin/vcgencmd measure_temp)
-echo Core $(/opt/vc/bin/vcgencmd measure_volts core)
-echo SDRAM $(/opt/vc/bin/vcgencmd measure_volts sdram_c)
+echo GPU $(vcgencmd measure_temp)
+echo Core $(vcgencmd measure_volts core)
+echo SDRAM $(vcgencmd measure_volts sdram_c)

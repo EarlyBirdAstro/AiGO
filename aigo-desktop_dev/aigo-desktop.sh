@@ -11,7 +11,7 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-VERSION=20210307
+VERSION=0.21.5.0_pre
 
 do_reboot() {
   if [ x"$ASK_TO_REBOOT" == x"true" ]; then
@@ -43,7 +43,8 @@ mkd() {
 
 HOS_DIR=/opt/AiGO
 LOG_DIR=/var/log/AiGO
-UNAME=ubuntu
+UNAME=aigo
+#UNAME=ubuntu
 UHOME=/home/$UNAME
 #listSystemd='systemctl list-units --type service --state active'
 listSystemd='systemctl list-units --state active'
@@ -51,10 +52,7 @@ listSystemd='systemctl list-units --state active'
 mkd $LOG_DIR root.root 0755
 
 
-# TODO: rm cloud-init files => move to remove not need packages
-#echo 'network: {config: disabled}' > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
-
-# TODO: A start job is running for Wait for Network to be Configured
+# A start job is running for Wait for Network to be Configured
 eval '$listSystemd' | grep 'systemd-networkd-wait-online.service'
 RET=$?
 if [ $RET -eq 0 ] ; then
@@ -63,7 +61,7 @@ if [ $RET -eq 0 ] ; then
   systemctl mask systemd-networkd-wait-online.service
 fi
 
-# TODO: change locale
+# change locale
 grep 'LANG="en_US.UTF-8"' /etc/default/locale
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -71,17 +69,17 @@ if [ $RET -eq 1 ] ; then
   sed -i 's/LANG=.*/LANG="en_US.UTF-8"/' /etc/default/locale
 fi
 
-# TODO: locale-gen zh_TW.UTF-8
+# locale-gen zh_TW.UTF-8
 locale-gen zh_TW.UTF-8
 update-locale
 
-# TODO: change timezone
+# change timezone
 timedatectl set-timezone 'Asia/Taipei'
 
-# TODO: adjtime LOCAL
+# adjtime LOCAL
 timedatectl set-local-rtc 1
 
-# TODO: disable or remove unattended-upgrades apt-daily apt-daily-upgrade
+# disable or remove unattended-upgrades apt-daily apt-daily-upgrade
 eval '$listSystemd' | grep 'unattended-upgrades.service'
 RET=$?
 if [ $RET -eq 0 ] ; then
@@ -107,7 +105,7 @@ fi
 
 apt-get update 2>&1 | tee $LOG_DIR/apt-update.log
 
-# v TODO: NTP
+# NTP
 dpkg -s ntp
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -118,7 +116,20 @@ if [ $RET -eq 1 ] ; then
   systemctl restart ntp
 fi
 
-# TODO: rc.local
+# cpufrequtils (cpufreq-set -r -g powersave)
+dpkg -s cpufrequtils
+RET=$?
+if [ $RET -eq 1 ] ; then
+   apt install cpufrequtils -y 2>&1 | tee $LOG_DIR/apt-install_cpufrequtils.log
+   
+   #cp /usr/share/doc/cpufrequtils/examples/cpufrequtils.loadcpufreq.sample /etc/default/loadcpufreq
+   #cp /usr/share/doc/cpufrequtils/examples/cpufrequtils.sample /etc/default/cpufrequtils
+
+   systemctl disable cpufrequtils
+   systemctl disable loadcpufreq
+fi
+
+# rc.local
 if [ ! -f /etc/rc.local ] ; then
   echo '#!/bin/sh -e
 
@@ -126,7 +137,7 @@ exit 0' > /etc/rc.local
   chmod 755 /etc/rc.local
 fi
 
-# TODO: LXQt
+# LXQt
 dpkg -s lxqt-panel
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -138,23 +149,10 @@ if [ $RET -eq 1 ] ; then
   #apt install lxqt-session lxqt-panel qterminal openbox obconf-qt xserver-xorg-video-vesa xserver-xorg-input-evdev -y 2>&1 | tee $LOG_DIR/apt-install_lxqt.log
 fi
 
-# TODO: remove gdm3
+# remove gdm3
 apt purge gdm3 -y 2>&1 | tee $LOG_DIR/apt-purge_gdm3.log
 
-# TODO: slim & autologin
-dpkg -s slim
-RET=$?
-RET=0
-if [ $RET -eq 1 ] ; then
-  #apt install --no-install-recommends slim -y 2>&1 | tee $LOG_DIR/apt-install_slim.log
-  apt install slim -y 2>&1 | tee $LOG_DIR/apt-install_slim.log
-
-  SCONF=/etc/slim.conf
-  echo 'auto_login yes
-default_user '$UNAME >> $SCONF
-fi
-
-# TODO: lightdm & autologin
+# lightdm & autologin
 dpkg -s lightdm
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -168,31 +166,7 @@ autologin-user-timeout=0
 user-session=lxqt" > $LCONF
 fi
 
-# TODO: gdm3 & autologin & lxqt session
-dpkg -s gdm3
-RET=$?
-RET=0
-if [ $RET -eq 1 ] ; then
-  GCONF=/etc/gdm3/custom.conf
-  grep '^AutomaticLoginEnable = true' $GCONF
-  RET=$?
-  if [ $RET -eq 1 ] ; then
-    cp -a $GCONF $GCONF.orig
-    sed -i "s|^#  AutomaticLogin = user1|#  AutomaticLogin = user1\nAutomaticLoginEnable = true\nAutomaticLogin = $UNAME|" $GCONF
-  fi
-
-  ASUCONF=/var/lib/AccountsService/users/$UNAME
-  if [ ! -f $ASUCONF ] ; then
-    grep '^XSession=lxqt' $ASUCONF
-    RET=$?
-    if [ $RET -eq 1 ] ; then
-      cp -a $ASUCONF $ASUCONF.orig
-      sef -i sed "s|^XSession=.*|XSession=lxqt|" $ASUCONF
-    fi
-  fi
-fi
-
-# TODO: chinese font
+# chinese font
 dpkg -s fonts-wqy-zenhei
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -214,11 +188,11 @@ if [ $RET -eq 1 ] ; then
   chmod 600 $UHOME/.config/fcitx/profile
 fi
 
-# TODO: install packages
-U2004_ADD_PKGS='net-tools traceroute nmap build-essential ncdu usb-modeswitch mlocate p7zip-full'
+# install packages
+U2004_ADD_PKGS='net-tools traceroute nmap build-essential ncdu usb-modeswitch mlocate p7zip-full firefox firefox-locale-zh-hant'
 apt install $U2004_ADD_PKGS -y 2>&1 | tee $LOG_DIR/apt-install_packages.log
 
-# TODO: x11vnc
+# x11vnc
 dpkg -s x11vnc
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -227,11 +201,12 @@ if [ $RET -eq 1 ] ; then
   mkd $UHOME/.config $UNAME.$UNAME 0700
   mkd $UHOME/.config/autostart $UNAME.$UNAME 0700
   cp -a /usr/share/applications/x11vnc.desktop $UHOME/.config/autostart
-  #sed -i 's/Exec=.*/Exec=x11vnc -xkb -loop/' $UHOME/.config/autostart/x11vnc.desktop
-  sed -i 's/Exec=.*/Exec=x11vnc -xkb -nopw -shared -forever -repeat/' $UHOME/.config/autostart/x11vnc.desktop
+  chmod $UNAME.$UNAME $UHOME/.config/autostart/x11vnc.desktop
+
+  sed -i 's/Exec=.*/Exec=x11vnc -xkb -nopw -shared -forever -repeat -geometry 1280x720/' $UHOME/.config/autostart/x11vnc.desktop
 fi
 
-# TODO: ssh security
+# ssh security
 grep '^AllowUsers' /etc/ssh/sshd_config | grep $UNAME
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -247,12 +222,12 @@ EOF
   service ssh reload
 fi
 
-# TODO: vim bg=dark
+# vim bg=dark
 echo 'set bg=dark' > /root/.vimrc
 echo 'set bg=dark' > $UHOME/.vimrc
 chown $UNAME.$UNAME $UHOME/.vimrc
 
-# TODO: systemd Star/Stop Timeout
+# systemd Star/Stop Timeout
 grep '^#DefaultTimeoutStartSec' /etc/systemd/system.conf
 RET=$?
 if [ $RET -eq 0 ] ; then
@@ -261,38 +236,38 @@ if [ $RET -eq 0 ] ; then
   sed -i 's/^#DefaultTimeoutStopSec=.*/DefaultTimeoutStopSec=10s/' /etc/systemd/system.conf
 fi
 
-# TODO: change hosts
+# change hosts
 sed -i 's/127.0.1.1.*/127.0.1.1\tAiGO/' /etc/hosts
 
-# TODO: AiGO repository
+# AiGO repository
 echo 'deb https://aigo.serveftp.org/test/ubuntu ./focal main' > /etc/apt/sources.list.d/aigo-ubuntu-focal.list
 apt-key adv --keyserver keyserver.ubuntu.com --recv 50842E4A
 
-# TODO: install add-apt-repository cli
+# install add-apt-repository cli
 dpkg -s software-properties-common
 RET=$?
 if [ $RET -eq 1 ] ; then
   apt install software-properties-common -y 2>&1 | tee $LOG_DIR/apt-install_software-properties-common.log
 fi
 
-# TODO: PHD2 repository
+# PHD2 repository
 add-apt-repository ppa:pch/phd2 -y 2>&1 | tee $LOG_DIR/add-apt-repository_pch-phd2.log
 
-# TODO: KStars Bleeding repository
+# KStars Bleeding repository
 apt-add-repository ppa:mutlaqja/ppa -y 2>&1 | tee $LOG_DIR/add-apt-repository_mutlaqja.log
 
 apt-get update 2>&1 | tee $LOG_DIR/apt-update_aigo.log
 
-# TODO: install lin_guider
+# lin_guider
 dpkg -s lin-guider
 RET=$?
 if [ $RET -eq 1 ] ; then
   apt install lin-guider -y 2>&1 | tee $LOG_DIR/apt-install_lin-guider.log
 fi
 
-# TODO: install StarsPi
+# TODO: StarsPi
 
-# TODO: install PHD2
+# PHD2
 dpkg -s phd2
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -300,33 +275,59 @@ if [ $RET -eq 1 ] ; then
   apt install phd2 -y 2>&1 | tee $LOG_DIR/apt-install_phd2.log
 fi
 
-# TODO: install INDI
+# INDI
 dpkg -s indi-full
 RET=$?
 if [ $RET -eq 1 ] ; then
   apt install indi-full -y 2>&1 | tee $LOG_DIR/apt-install_indi.log
 fi
 
-# TODO: install KStars
+# TODO: IndiStarter
+
+# KStars
 dpkg -s kstars-bleeding
 RET=$?
 if [ $RET -eq 1 ] ; then
   apt install kstars-bleeding -y 2>&1 | tee $LOG_DIR/apt-install_kstars-bleeding.log
 fi
 
-# TODO: install INDIGO
+# INDIGO & autostart indigo.service
 dpkg -s indigo
 RET=$?
 if [ $RET -eq 1 ] ; then
-   echo "deb [trusted=yes] https://indigo-astronomy.github.io/indigo_ppa/ppa indigo main" > /etc/apt/sources.list.d/indigo.list
-   apt update
-   apt install indigo indigo-control-panel ain-imager -y 2>&1 | tee $LOG_DIR/apt-install_indogo.log
+  echo "deb [trusted=yes] https://indigo-astronomy.github.io/indigo_ppa/ppa indigo main" > /etc/apt/sources.list.d/indigo.list
+  apt update
+  apt install indigo indigo-control-panel ain-imager -y 2>&1 | tee $LOG_DIR/apt-install_indogo.log
+
+  IF=/lib/systemd/system/indigo.service
+  echo "[Unit]
+Description=Indigo server
+
+[Service]
+User=$UNAME
+PAMName=login
+ExecStart=/usr/bin/indigo_server --enable-rpi-management
+StandardOutput=file:/var/log/indigo.log
+StandardError=file:/var/log/indigo.log
+
+[Install]
+WantedBy=multi-user.target
+" > $IF
+
+  systemctl enable indigo.service
+fi
+
+# gPhoto2
+dpkg -s gphoto2
+RET=$?
+if [ $RET -eq 1 ] ; then
+   apt install gphoto2 -y 2>&1 | tee $LOG_DIR/apt-install_gphoto2.log
 fi
 
 # Memo: Lin-guide devel
 # sudo apt install qtbase5-dev libusb-1.0-0-dev libgphoto2-dev libwiringpi-dev
 
-# TODO: remove not need packages
+# remove not need packages
 U2004_PURGE_PKGS=' acl alsa-topology-conf alsa-ucm-conf'
 #U2004_PURGE_PKGS+=' adwaita-icon-theme-full' phd2 depend
 U2004_PURGE_PKGS+=' bind9-dnsutils bind9-host bind9-libs btrfs-progs byobu'
@@ -357,27 +358,28 @@ U2004_PURGE_PKGS+=' xfsprogs xscreensaver xscreensaver-data xserver-xorg-video-a
 
 apt purge $U2004_PURGE_PKGS -y 2>&1 | tee $LOG_DIR/apt-purge_packages.log
 
-# TODO: ain-imager depend avahi-daemon
+# ain-imager depend avahi-daemon
 dpkg -s avahi-daemon
 RET=$?
 if [ $RET -eq 1 ] ; then
    apt install avahi-daemon -y 2>&1 | tee $LOG_DIR/apt-install_avahi-daemon.log
 fi
 
-# TODO: dist-upgrade
+# dist-upgrade
 ## 避免 dpkg-preconfigure 出現 keyboard-configuration 互動畫面
 RET=0
 if [ $RET -eq 1 ] ; then
   DEBIAN_FRONTEND=noninteractive apt -o Dpkg::Options::="--force-confnew" dist-upgrade -y 2>&1 | tee $LOG_DIR/apt-dist-upgrade.log
 fi
 
-# TODO: lxqt quicklaunch
 # TODO: first boot init lxqt/*
 mkd $UHOME/.config/lxqt $UNAME.$UNAME 0775
 cp -a /usr/share/lxqt/*.conf $UHOME/.config/lxqt
 chown -R $UNAME:$UNAME $UHOME/.config/lxqt
-sed -i 's/type=quicklaunch/type=quicklaunch\napps\\1\\desktop=\/usr\/share\/applications\/phd2.desktop\napps\\2\\desktop=\/usr\/share\/applications\/lin_guider.desktop\napps\\3\\desktop=\/usr\/share\/applications\/org.kde.kstars.desktop\napps\\size=3/' $UHOME/.config/lxqt/panel.conf
 
+# lxqt quicklaunch
+#sed -i 's/type=quicklaunch/type=quicklaunch\napps\\1\\desktop=\/usr\/local\/share\/applications\/aigo_config.desktop\napps\\2\\desktop=\/usr\/share\/applications\/phd2.desktop\napps\\3\\desktop=\/usr\/share\/applications\/lin_guider.desktop\napps\\4\\desktop=\/usr\/share\/applications\/org.kde.kstars.desktop\napps\\size=4/' $UHOME/.config/lxqt/panel.conf
+sed -i 's/type=quicklaunch/type=quicklaunch\napps\\1\\desktop=\/usr\/local\/share\/applications\/aigo_config.desktop\napps\\2\\desktop=\/usr\/share\/applications\/phd2.desktop\napps\\3\\desktop=\/usr\/share\/applications\/lin_guider.desktop\napps\\4\\desktop=\/usr\/share\/applications\/org.kde.kstars.desktop\napps\\5\\desktop=\/usr\/share\/applications\/indigo-control-panel.desktop\napps\\6\\desktop=\/usr\/share\/applications\/ain-imager.desktop\napps\\size=6/' $UHOME/.config/lxqt/panel.conf
 # TODO: apt-mark hold
 
 dpkg -s ifupdown
@@ -386,20 +388,101 @@ if [ $RET -eq 1 ] ; then
   apt install ifupdown -y 2>&1 | tee $LOG_DIR/apt-install_ifupdown.log
 fi
 
-# TODO: RaspAP , libmain0 , php7.4-cgi
+# RaspAP , libmain0 , php7.4-cgi
 systemctl disable systemd-resolved.service
 
 apt install php-cgi -y 2>&1 | tee $LOG_DIR/apt-install_php-cgi.log
 apt install gamin -y 2>&1 | tee $LOG_DIR/apt-install_gamin.log
 curl -sL https://install.raspap.com | tee raspap_install.sh
 bash -x ./raspap_install.sh -o 0 -a 0 -y | tee $LOG_DIR/raspap_install.log
+rm -f raspap_install.sh
 
 # fix /tmp/dnsmasq.log permission start dnsmasq fail
 sed -i 's/log-facility=.*/log-facility=\/var\/log\/dnsmasq.log/' /etc/dnsmasq.d/090_raspap.conf
+
 # fix systemd-resolved mark hold dnsmasq
 systemctl enable dnsmasq
 
-# TODO: setup networking
+# lighttpd ssl
+LD=/etc/lighttpd
+if [ ! -f $LD/server.pem ] ; then
+  cd $LD ; openssl req -new -x509 -subj "/C=TW/L=Kaohsiung/O=AiGO/emailAddress=earlybird.astro@gmail.com" -keyout server.pem -days 1825 -nodes -out server.pem
+  lighttpd-enable-mod ssl
+fi
+
+## lighttpd rewrite exclude /vaw/www/html/aigo
+#sed -i 's/dist|app|ajax|config/dist|app|ajax|config|aigo/' /etc/lighttpd/conf-available/50-raspap-router.conf
+
+# lighttpd rewrite /vaw/www/html to /var/www/html/raspap
+WD=/var/www
+HD=html
+RD=raspap
+if [ ! -d $WD/$HD/$RD ] ; then
+  mv $WD/$HD $WD/$RD
+
+  mkdir $WD/$HD
+  chown www-data.www-data $WD/$HD
+  mv $WD/$RD $WD/$HD
+
+  RF=$LD/conf-available/50-raspap-router.conf
+  sed -i 's/(?!(dist/raspap\/(?!(dist/' $RF
+  sed -i 's/\/(.*?)/\/raspap\/(.*?)/' $RF
+  sed -i 's/\/index.php/\/raspap\/index.php/' $RF
+fi
+
+# change ssid & wpa_passphrase
+HF=/etc/hostapd/hostapd.conf
+if [ -f $HF ] ; then
+  MAC=`ifconfig eth0 |grep 'ether' | awk '{print $2}' | awk -F ':' '{print $4$5$6}'`
+  sed -i "s/^ssid=.*/ssid=AiGO_${MAC}/" $HF
+  sed -i 's/^wpa_passphrase=.*/wpa_passphrase=1234567890/' $HF
+fi
+
+# noVNC
+ND=/opt/noVNC
+if [ ! -d $ND ] ; then
+  cd /opt ; git clone https://github.com/novnc/noVNC.git
+  
+  # depend websockify
+  cd $ND/utils ; git clone https://github.com/novnc/websockify
+  
+  chown -R $UNAME:$UNAME $ND
+fi
+
+# websocket.py depend numpy
+dpkg -s numpy-stl
+RET=$?
+if [ $RET -eq 1 ] ; then
+  apt install numpy-stl -y 2>&1 | tee $LOG_DIR/apt-install_numpy-stl.log
+fi
+
+# aigo-tools
+dpkg -s aigo-tools
+RET=$?
+if [ $RET -eq 1 ] ; then
+  apt install aigo-tools -y 2>&1 | tee $LOG_DIR/apt-install_aigo-tools.log
+
+  mkd $UHOME/.config/pcmanfm-qt $UNAME.$UNAME 0775
+  mkd $UHOME/.config/pcmanfm-qt/lxqt $UNAME.$UNAME 0775
+  cp -a /usr/share/pcmanfm-qt/lxqt/settings.conf $UHOME/.config/pcmanfm-qt/lxqt
+  chown -R $UNAME:$UNAME $UHOME/.config/pcmanfm-qt/lxqt
+
+  # change to AiGO wallpaper
+  sed -i 's/WallpaperMode=.*/WallpaperMode=center/' $UHOME/.config/pcmanfm-qt/lxqt/settings.conf
+  sed -i 's/Wallpaper=.*/Wallpaper=\/usr\/local\/share\/pixmaps\/aigo_background-1920x1080.png\nWallpaperDirectory=\nWallpaperRandomize=false\n/' $UHOME/.config/pcmanfm-qt/lxqt/settings.conf
+
+  # noVNC ssl & autostart
+  if [ -d $ND ] ; then
+    mkdir $ND/ssl
+    cp -a /opt/aigo/aigo_noVNC.pem $ND/ssl
+    chown -R $UNAME.$UNAME $ND/ssl
+
+    cp -a /opt/aigo/aigo_novnc.desktop $UHOME/.config/autostart
+    chown $UNAME.$UNAME $UHOME/.config/autostart/aigo_novnc.desktop
+  fi
+fi
+
+# setup networking
 grep 'allow-hotplug usb0' /etc/network/interfaces
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -421,7 +504,7 @@ iface enp0s3 inet dhcp' >> /etc/network/interfaces
   systemctl restart networking
 fi
 
-# TODO: My IP
+# My IP
 grep 'My IP address' /etc/issue
 RET=$?
 if [ $RET -eq 1 ] ; then
@@ -429,11 +512,11 @@ if [ $RET -eq 1 ] ; then
 My IP address: \4' >> /etc/issue
 fi
 
-# TODO: change hostname
+# change hostname
 echo 'AiGO' > /etc/hostname
 sed -i 's/127.0.0.1 localhost/127.0.0.1 localhost\n127.0.1.1 AiGO/' /etc/hosts
 
-# TODO: clean autoclean autoremove
+# clean autoclean autoremove
 apt clean -y 2>&1 | tee $LOG_DIR/apt-clean.log
 apt autoclean -y 2>&1 | tee $LOG_DIR/apt-autoclean.log
 apt autoremove -y 2>&1 | tee $LOG_DIR/apt-autoremove.log
@@ -444,4 +527,3 @@ find /boot -type f -iname *bak -exec rm -f {} \;
 
 ASK_TO_REBOOT=true
 do_reboot
-

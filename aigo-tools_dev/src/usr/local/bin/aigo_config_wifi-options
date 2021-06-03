@@ -45,6 +45,8 @@ change_wifi_ssid() {
 				if dialog --colors --clear --title " Reconfirm " --cr-wrap --no-collapse --yesno "\nAre you sure you want to change the SSID for '$TRIMNEWSSID' ?" 8 48; then
 					sed 's/^ssid='$OLDSSID'/ssid='$TRIMNEWSSID'/' $CONFDIR/$CONFFILE > /tmp/$CONFFILE
 
+					echo "waitting for restart hostapd ..."
+
 					service hostapd stop
 					sleep 1
 
@@ -81,6 +83,8 @@ change_wifi_password() {
 
 						if dialog --colors --clear --title " Confirm " --yesno "\nAre you sure you want to change the password ?" 8 65; then
 							sed 's/^wpa_passphrase='$OLDPWD'/wpa_passphrase='$NEWPWD'/' $CONFDIR/$CONFFILE > /tmp/$CONFFILE
+
+							echo "waitting for restart hostapd ..."
 
 							service hostapd stop
 							sleep 1
@@ -130,14 +134,18 @@ CURRENT_WPAPASS="Undefined"
 Menu02Tag="2 Change WiFi Password"
 Menu02Item="\Zr\Z7$CURRENT_WPAPASS\Zn"
 
-CURRENT_WANIP="Undefined"
-Menu03Tag="3 Change WiFi IP"
-Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn"
+# use RaspAP start 2021.v1
+#CURRENT_WANIP="Undefined"
+#Menu03Tag="3 Change WiFi IP"
+#Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn"
 
-Menu04Tag="4 Switch 2.4G or 5G"
-Menu04Item="2.4G: 2.4GHz ~ 2.5GHz , 5G: 4.9GHz ~ 5.9GHz \Z1(Coming Soon)\Zn"
+#Menu04Tag="4 Switch 2.4G or 5G"
+#Menu04Item="2.4G: 2.4GHz ~ 2.5GHz , 5G: 4.9GHz ~ 5.9GHz \Z1(Coming Soon)\Zn"
 
-Menu05Tag="5"
+#Menu05Tag="5"
+
+Menu03Tag="3"
+# use RaspAP end 2021.v1
 
 Menu00Tag="0 Back"
 Menu00Item="Back to main menu."
@@ -147,8 +155,11 @@ do
 
 CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}'`
 CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`"**"
-CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
-CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+#CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+#CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+# above 20.04
+CURRENT_WANIP=`ifconfig wlan0 | grep "inet " | awk '{print $2}'`
+CURRENT_LANIP=`ifconfig eth0 | grep "inet " | awk '{print $2}'`
 
 MenuText="\
 WiFi SSID     : \Z4$CURRENT_SSID\Zn\n\
@@ -160,7 +171,7 @@ LAN IP        : \Z4$CURRENT_LANIP\Zn\n\
 
 Menu01Item="\Zr\Z7$CURRENT_SSID\Zn"
 Menu02Item="\Zr\Z7$CURRENT_WPAPASS\Zn"
-Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn"
+#Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn" # use RaspAP 2021.v1
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Back" \
@@ -172,9 +183,14 @@ $MenuHeight $MenuWidth $MenuItemHeight \
 "$Menu01Tag" "$Menu01Item" \
 "$Menu02Tag" "$Menu02Item" \
 "$Menu03Tag" "$Menu03Item" \
-"$Menu04Tag" "$Menu04Item" \
-"$Menu00Tag" "$Menu05Item" \
+"$Menu00Tag" "$Menu00Item" \
 2>"${INPUT}"
+
+# use RaspAP start 2021.v1
+#"$Menu03Tag" "$Menu03Item" \
+#"$Menu04Tag" "$Menu04Item" \
+#"$Menu00Tag" "$Menu05Item" \
+# use RaspAP end 2021.v1
 
 menuitem=$(<"${INPUT}")
 
@@ -185,11 +201,15 @@ case $menuitem in
         "$Menu02Tag")
                 change_wifi_password
                 ;;
+# use RaspAP start 2021.v1
+#        "$Menu03Tag")
+#                # TODO: change_wifi_ip
+#                ;;
+#        "$Menu04Tag")
+#                ;;
         "$Menu03Tag")
-                # TODO: change_wifi_ip
                 ;;
-        "$Menu04Tag")
-                ;;
+# use RaspAP end 2021.v1
         "$Menu00Tag")
                 clear
                 echo "Back to main menu."

@@ -8,12 +8,12 @@
 
     <property environment="env"/>
 	<property name="package_name" value="aigo-tools"/>
-	<property name="package_version" value="0.1.98"/>
-	<property name="debian_version" value="0.91"/>
+	<property name="package_version" value="0.1.99"/>
+	<property name="debian_version" value="20210601"/>
 	<property name="section" value="science"/>
 	<property name="priority" value="optional"/>
-	<property name="architecture" value="armhf"/>
-	<property name="deb_depends" value="dialog"/>
+	<property name="architecture" value="all"/>
+	<property name="deb_depends" value="dialog, lxterminal, libraspberrypi-bin"/>
 	<property name="maintainer" value="Cheng-Chang Ho"/>
 	<property name="maintainer_email" value="earlybird.astro@gmail.com"/>
 	<property name="brief" value="AiGO Tools"/>
@@ -25,10 +25,10 @@
 	<property name="plugins" value="plugins"/>
 	<property name="deb_root" value="deb_root"/>
 	<property name="deb_script" value="deb_script"/>
-        <property name="deb_conf" value="deb_conf"/>
-        <property name="aigo_src" value="src"/>
-        <property name="include_dir" value="etc/ lib/ opt/ usr/ var/"/>
-        <property name="aigo_dir" value="/opt/aigo"/>
+    <property name="deb_conf" value="deb_conf"/>
+    <property name="aigo_src" value="src"/>
+    <property name="include_dir" value="etc/ lib/ opt/ usr/ var/"/>
+    <property name="aigo_dir" value="/opt/aigo"/>
 <!--
         <property name="src_files" value="aigo_config, aigo_config.desktop, aigo.png, aigo_version, aigo_look.sh, do_change_ssid.sh, switch_libasicamera.sh, 00-aigo.rules, z99-aigo.rules, aigo.conf, lin-guider.conf, rpi-update.exp, brcm/brcmfmac43455-sdio.txt, brc/BCM4345C0.hcd, brcm/brcmfmac43455-sdio.bin, brcm/brcmfmac43455-sdio.clm_blob, aigo_upgrade_2018v1a2-2018v1a3.sh, cmdline.txt, config.txt, aigo_init-resize.sh, aigo_sysprep.sh, aigo_config_wifi-options, aigo_config_install-astronomy-softwares, background-tile.png"/>
 

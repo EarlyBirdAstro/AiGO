@@ -6,11 +6,10 @@ echo "postinst="$type
 AIGO_TOOLS_DIR=/opt/aigo
 LOCAL_DIR=/usr/local
 ROOT_DIR=/
-UDEV_RULES_DIR=/lib/udev/rules.d
 AIGO_USER=aigo
 AIGO_HOME=/home/$AIGO_USER
-LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
-LXPANEL_CONF=panel
+LXQTPANEL_CONF_DIR=$AIGO_HOME/.config/lxqt
+LXQTPANEL_CONF=panel.conf
 
 chfile() {
         FNAME=$1
@@ -25,26 +24,14 @@ chfile() {
         chmod $MOD $FDIR/$FNAME
 }
 
-# TODO: 0.1.93 postrm remove aigo_config, aigo_look.sh ...
 chfile aigo_config $LOCAL_DIR/bin root.root 755
 chfile aigo_config.desktop $LOCAL_DIR/share/applications root.root 644
 chfile aigo.png $LOCAL_DIR/share/pixmaps root.root 644
 chfile aigo_look.sh $LOCAL_DIR/bin root.root 755
 chfile aigo_version $ROOT_DIR/etc root.root 644
-chfile 00-aigo.rules $UDEV_RULES_DIR root.root 644
-chfile z99-aigo.rules $UDEV_RULES_DIR root.root 644
-chfile aigo.conf $LOCAL_DIR/etc root.root 644
 
 chown root.root /etc/aigo*
 chmod 644 /etc/aigo*
-
-chown root.root /etc/nginx/ssl
-chmod 755 /etc/nginx/ssl
-chown root.root /etc/nginx/ssl/*
-chmod 640 /etc/nginx/ssl/*
-
-chown root.root /lib/udev/rules.d/*aigo*
-chmod 644 /lib/udev/rules.d/*aigo*
 
 chown root.root /opt/aigo
 chmod 755 /opt/aigo
@@ -58,34 +45,15 @@ chmod 440 /etc/sudoers.d/aigo*
 chown root.root /usr/local/bin/aigo*
 chmod 755 /usr/local/bin/aigo*
 
-chown root.root /usr/local/etc/aigo*
-chmod 644 /usr/local/etc/aigo*
-
 chown root.root /usr/local/share/applications/aigo*
 chmod 644 /usr/local/share/applications/aigo*
 
 chown root.root /usr/local/share/pixmaps/aigo*
 chmod 644 /usr/local/share/pixmaps/aigo*
 
+chown www-data.www-data /var/www/html
+chmod 755 /var/www/html
 chown www-data.www-data /var/www/html/*.php
 chmod 644 /var/www/html/*.php
-
-# Add aigo_config to LXPanel
-grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
-RET=$?
-if [ $RET -eq 1 ] ; then
-        cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postinst.bak
-        sed -i -z 's/lxterminal.desktop/lxterminal.desktop\n    }\n    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop/' $LXPANEL_CONF_DIR/$LXPANEL_CONF
-fi
-
-# Restart LXPanel
-sleep 0.25
-su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
-sleep 0.25
-su $AIGO_USER -c 'rm -f ~/.cache/menus/*'
-sleep 0.25
-su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
-sleep 0.25
-su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
 
 exit 0

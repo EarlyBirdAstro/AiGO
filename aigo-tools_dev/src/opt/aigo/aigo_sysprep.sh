@@ -24,14 +24,13 @@ AIGO_USER=aigo
 AIGO_HOME=/home/$AIGO_USER
 SUBDIR=`date +%Y%m%d-%H%M%S`
 KERVER=5.4.3
+BOOT_PART=/boot/firmware
 
 # TODO: first boot expand filesystem
-sed -i 's|quiet splash|quiet splash init=/opt/aigo/aigo_init-resize.sh|' /boot/cmdline.txt
-chown root.root /boot/cmdline.txt
-chmod 755       /boot/cmdline.txt
-chmod 755	/opt/aigo/aigo_init-resize.sh
-
-ROOT_PART=$(mount | sed -n 's|^/dev/\(.*\) on / .*|\1|p')
+sed -i 's|rootwait fixrtc$|rootwait fixrtc init=/opt/aigo/aigo_init-resize.sh|' $BOOT_PART/cmdline.txt
+chown root.root $BOOT_PART/cmdline.txt
+chmod 755       $BOOT_PART/cmdline.txt
+chmod 755	    /opt/aigo/aigo_init-resize.sh
 
 cat <<EOF > /etc/init.d/resize2fs_once &&
 #!/bin/sh
@@ -47,11 +46,12 @@ cat <<EOF > /etc/init.d/resize2fs_once &&
 
 . /lib/lsb/init-functions
 
+ROOT_DEV=\`findmnt / -o source -n\`
+
 case "\$1" in
 	start)
-		log_daemon_msg "Starting resize2fs_once" &&
-		resize2fs /dev/$ROOT_PART &&
-		touch /.resized &&
+		log_daemon_msg "Starting resize2fs_once"
+		resize2fs \$ROOT_DEV &&
 		update-rc.d resize2fs_once remove &&
 		rm /etc/init.d/resize2fs_once &&
 		log_end_msg \$?
@@ -73,13 +73,6 @@ bash /opt/aigo/do_change_ssid.sh
 apt autoremove
 apt clean
 
-# TODO: remove old kernel
-rm -rf /boot.bak
-rm -rf /lib/modules.bak
-mv /lib/modules/$KERVER* /root
-rm -rf /lib/modules/*
-mv /root/$KERVER* /lib/modules
-
 # TODO: rm bash history
 history -c
 rm -rf /root/.bash_history
@@ -88,12 +81,6 @@ rm -rf $AIGO_HOME/.bash_history
 # TODO: rm .cache
 rm -rf /root/.cache/*
 rm -rf $AIGO_HOME/.cache/*
-
-# TODO: change hostname
-echo "AiGO" /etc/hostname
-
-# TODO: change hosts
-sed -i 's|127.0.1.1\tlocalhost|127.0.0.1\tAiGO|' /etc/hosts
 
 # TODO: autostart aigo_config.desktop
 cp /usr/local/share/applications/aigo_config.desktop $AIGO_HOME/.config/autostart
@@ -120,7 +107,7 @@ find /var/log -type f -exec rm -rf {} \;
 rm -rf /var/log/aigo/*
 
 # TODO: aigo repository
-echo "deb http://aigo.serveftp.org/ubuntu xenial main" > /etc/apt/sources.list.d/aigo-ubuntu-xenial.list
+echo "deb http://aigo.serveftp.org/ubuntu ./focal main" > /etc/apt/sources.list.d/aigo-ubuntu-focal.list
 
 dialog --msgbox "A shutdown is needed" 20 60
 sync

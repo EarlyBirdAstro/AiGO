@@ -12,7 +12,10 @@
 	<property name="debian_version" value="0.90ubuntu~20.04"/>
 	<property name="section" value="science"/>
 	<property name="priority" value="optional"/>
+    <!--
 	<property name="architecture" value="arm64"/>
+    -->
+    <property name="architecture" value="armhf"/>
 	<property name="deb_depends" value="libusb-1.0-0, libqtgui4|libqt5gui5, libqtcore4|libqt5core5a, libqt5widgets5"/>
 	<property name="maintainer" value="Cheng-Chang Ho"/>
 	<property name="maintainer_email" value="earlybird.astro@gmail.com"/>

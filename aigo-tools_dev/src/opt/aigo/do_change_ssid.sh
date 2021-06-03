@@ -7,7 +7,7 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
-VER=0.1.0
+VER=0.1.1
 AUTHOR="Contributed by Cheng-Chang Ho."
 
 do_change_ssid() {
@@ -32,7 +32,7 @@ case "\$1" in
   start)
     log_daemon_msg "Starting change_ssid_once" &&
     cp $HF $HF.once &&
-    MAC=\`ifconfig eth0 | grep 'HWaddr' | awk '{print \$5}' | awk -F ':' '{print \$4\$5\$6}'\`
+    MAC=\`ifconfig eth0 | grep 'ether' | awk '{print \$2}' | awk -F ':' '{print \$4\$5\$6}'\`
     sed -i \"s/^ssid=.*/ssid=AiGO_\${MAC}/\" $HF &&
     update-rc.d change_ssid_once remove &&
     rm /etc/init.d/change_ssid_once &&

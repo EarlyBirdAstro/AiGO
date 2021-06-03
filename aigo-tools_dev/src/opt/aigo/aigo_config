@@ -117,83 +117,6 @@ upgrade_aigo-tools() {
 	fi
 }
 
-# This code from raspi-config
-do_expand_rootfs() {
-	ROOT_PART=$(mount | sed -n 's|^/dev/\(.*\) on / .*|\1|p')
-	PART_NUM=${ROOT_PART#mmcblk0p}
-	if [ "$PART_NUM" = "$ROOT_PART" ]; then
-		dialog --msgbox "$ROOT_PART is not an SD card. Don't know how to expand" 20 60
-		return 0
-	fi
-
-	# NOTE: the NOOBS partition layout confuses parted. For now, let's only
-	# agree to work with a sufficiently simple partition layout
-	if [ "$PART_NUM" -ne 2 ]; then
-		dialog --msgbox "Your partition layout is not currently supported by this tool. You are probably using NOOBS, in which case your root filesystem is already expanded anyway." 20 60
-		return 0
-	fi
-
-	LAST_PART_NUM=$(parted /dev/mmcblk0 -ms unit s p | tail -n 1 | cut -f 1 -d:)
-	if [ $LAST_PART_NUM -ne $PART_NUM ]; then
-		dialog --msgbox "$ROOT_PART is not the last partition. Don't know how to expand" 20 60
-		return 0
-	fi
-
-	# Get the starting offset of the root partition
-	PART_START=$(parted /dev/mmcblk0 -ms unit s p | grep "^${PART_NUM}" | cut -f 2 -d: | sed 's/[^0-9]//g')
-	[ "$PART_START" ] || return 1
-	# Return value will likely be error for fdisk as it fails to reload the
-	# partition table because the root fs is mounted
-	fdisk /dev/mmcblk0 <<EOF
-p
-d
-$PART_NUM
-n
-p
-$PART_NUM
-$PART_START
-
-p
-w
-EOF
-
-	# now set up an init.d script
-	cat <<EOF > /etc/init.d/resize2fs_once &&
-#!/bin/sh
-### BEGIN INIT INFO
-# Provides:          resize2fs_once
-# Required-Start:
-# Required-Stop:
-# Default-Start: 3
-# Default-Stop:
-# Short-Description: Resize the root filesystem to fill partition
-# Description:
-### END INIT INFO
-
-. /lib/lsb/init-functions
-
-case "\$1" in
-	start)
-		log_daemon_msg "Starting resize2fs_once" &&
-		resize2fs /dev/$ROOT_PART &&
-		touch /.resized &&
-		update-rc.d resize2fs_once remove &&
-		rm /etc/init.d/resize2fs_once &&
-		log_end_msg \$?
-		;;
-	*)
-		echo "Usage: \$0 start" >&2
-		exit 3
-	;;
-esac
-EOF
-	chmod +x /etc/init.d/resize2fs_once &&
-	update-rc.d resize2fs_once defaults &&
-	if [ "$INTERACTIVE" = True ]; then
-		dialog --msgbox "Root partition has been resized.\nThe filesystem will be enlarged upon the next reboot" 20 60
-	fi
-}
-
 do_reboot() {
 	if [ $ASK_TO_REBOOT -eq 1 ]; then
 		dialog --yesno "Would you like to reboot now?" 20 60
@@ -225,7 +148,6 @@ install-astronomy-softwares() {
 # Bold is set by 'b', reset by 'B'. Reverse is set by 'r', reset by 'R'. Underline is set by 'u', reset by 'U'.
 # Restore normal settings with "\Zn"
 
-#BackTitle="\Z7AiGO $AIGO_VER\Zn - $BNAME v$VER"
 BackTitle="\Z7AiGO $AIGO_VER\Zn - aigo-tools ver: $VER"
 
 MenuTitle="\Zr\Z7 AiGO Software Configuration Tool (aigo_config) \Zn"
@@ -235,26 +157,38 @@ MenuWidth=100
 MenuItemHeight=10
 
 Menu01Tag="1 WiFi Options"
-Menu01Item="Configure WiFi SSID / Password / IP"
+# RaspAP to configure networking start 2021.v1
+#Menu01Item="Configure WiFi SSID / Password / IP"
+Menu01Item="Configure WiFi SSID / Password"
+# RaspAP to configure networking end 2021.v1
 
 CURRENT_LANIP="Undefined"
-Menu02Tag="2 Change LAN IP"
-Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn"
+# RaspAP to configure networking start 2021.v1
+#Menu02Tag="2 Change LAN IP"
+#Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn"
+Menu02Tag="2 RaspAP"
+Menu02Item="Simple wireless router setup \Zr\Z7(default user/pwsd:admin/secret)\Zn"
+# RaspAP to configure networking end 2021.v1
 
 Menu03Tag="3 Change User Password"
 Menu03Item="\Zr\Z7aigo\Zn user default password is \Zr\Z7admin123\Zn"
 
-Menu04Tag="4 raspi-config"
-Menu04Item="Raspberry Pi Software Configuration Tool"
+# disable start 2021.v1
+Menu04Tag="4"
+#Menu04Tag="4 raspi-config"
+#Menu04Item="Raspberry Pi Software Configuration Tool"
 
 Menu05Tag="5"
 Menu06Tag="6"
 
-Menu07Tag="7 Get Astrometry fits"
-Menu07Item="Getting index files for Astrometry.net \Z1(Coming Soon)\Zn"
+Menu07Tag="7"
+#Menu07Tag="7 Get Astrometry fits"
+#Menu07Item="Getting index files for Astrometry.net \Z1(Coming Soon)\Zn"
 
-Menu08Tag="8 Instell Astronomy Softwares"
-Menu08Item="e.g. oaCapture, SkyChart, PlanetaryImager, ..."
+Menu08Tag="8"
+#Menu08Tag="8 Instell Astronomy Softwares"
+#Menu08Item="e.g. oaCapture, SkyChart, PlanetaryImager, ..."
+# disable end 2021.v1
 
 Menu09Tag="9 AiGO Upgrade"
 Menu09Item="AiGO Tools Upgrade"
@@ -268,8 +202,9 @@ do
 
 CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}'`
 CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`"**"
-CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
-CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+# above 20.04
+CURRENT_WANIP=`ifconfig wlan0 | grep "inet " | awk '{print $2}'`
+CURRENT_LANIP=`ifconfig eth0 | grep "inet " | awk '{print $2}'`
 
 MenuText="\
 WiFi SSID     : \Z4$CURRENT_SSID\Zn\n\
@@ -279,7 +214,7 @@ LAN IP        : \Z4$CURRENT_LANIP\Zn\n\
 \nYou can use the UP/DOWN arrow keys, the number keys 0-9 to choose an option.\n\
 \nChoose the item"
 
-Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn"
+#Menu02Item="\Zr\Z7$CURRENT_LANIP\Zn \Z1(Coming Soon)\Zn" # RaspAP to configure networking 2021.v1
 
 dialog --no-shadow --visit-items --colors --clear \
 --default-item "0 Exit" \
@@ -309,13 +244,20 @@ case $menuitem in
 		;;
 	"$Menu02Tag")
 		# TODO: change_lan_ip
+		# use RaspAP to configure networking start 2021.v1
+		su $AIGO_USER -s /usr/bin/browse https://localhost/raspap > /dev/null 2>&1 &
+        echo "Start RaspAP"
+        sleep 5
+		# use RaspAP to configure networking end 2021.v1
 		;;
 	"$Menu03Tag")
 		change_user_password
 		;;
 	"$Menu04Tag")
-		raspi-config
-		clear
+		# disable start 2021.v1
+		#raspi-config
+		#clear
+		# disable end 2021.v1
 		;;
 	"$Menu05Tag")
 		;;
@@ -326,7 +268,7 @@ case $menuitem in
 		;;
 	"$Menu08Tag")
 		# TODO: Instell Astronomy Softwares
-		aigo_config_install-astronomy-softwares
+		#aigo_config_install-astronomy-softwares # disable 2021.v1
 		;;
 	"$Menu09Tag")
 		# TODO: upgrade_os , upgrade_kernel , upgrade_app
