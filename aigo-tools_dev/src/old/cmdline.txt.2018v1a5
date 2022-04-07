@@ -1,1 +1,0 @@
-dwc_otg.lpm_enable=0 console=tty1 root=PARTUUID=bc81ff27-02 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait net.ifnames=0 biosdevname=0 ipv6.disable=1 plymouth.ignore-serial-consoles quiet splash

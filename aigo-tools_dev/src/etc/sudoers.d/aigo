@@ -1,2 +1,0 @@
-# Allow members of group gpio to execute scratch and sqweak
-%www-data ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/aigo_web-synctime.sh, /usr/local/bin/aigo_web-getgps.sh
