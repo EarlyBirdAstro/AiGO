@@ -63,7 +63,7 @@ if [ $RET -eq 0 ] ; then
     rm -f ${filename}
     chown -R aigo /opt/firecapture # fix Permission denied
     chmod 644 /opt/firecapture/icon.png # fix menu display icon
-    sed -i 's/read -r.*//' /opt/firecapture/start.sh # fix call firecapture.desktop end , process wait press an key
+    sed -i 's/read -r.*//' /opt/firecapture/start.sh # fix call firecapture.desktop end , process wait press any key
 
     # change heap size 1GB : 250 , 2GB : 1250 , >= 4GB : 2500 (armhf) , 3400 (arm64)
     MEM=`free -m | grep Mem | awk '{print $2}'`
