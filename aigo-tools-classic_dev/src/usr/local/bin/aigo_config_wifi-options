@@ -1,0 +1,214 @@
+#!/bin/bash
+
+# Everything else needs to be run as root
+BNAME=`basename $0`
+if [[ ${EUID} -ne 0 ]]; then
+  TITLE="Error !"
+  MSG="Script must be run as root.\n\nTry 'sudo $BNAME'\n"
+  dialog --colors --clear --title " \Z1$TITLE\Zn " --msgbox "\n\Z1$MSG\Zn" 10 70
+  exit 1
+fi
+
+VER=`dpkg -s aigo-tools-classic | grep Version | awk -F ': ' '{print $2}'`
+
+AUTHOR="Contributed by Cheng-Chang Ho."
+
+AIGOUSER=`echo $HOME | awk -F '/' '{print $3}'`
+AIGO_VER=`cat /etc/aigo_version`
+
+SSID_MAX_LEN=11
+WPAPASS_MAX_LEN=10
+INTERACTIVE=True
+ASK_TO_REBOOT=0
+
+AIGO_USER=aigo
+AIGO_HOME=/home/$AIGO_USER
+AUTOSTART_DIR=$AIGO_HOME/.config/autostart
+
+INPUT=/tmp/aigo_config.subinput
+OUTPUT=/tmp/aigo_config.suboutput
+
+[ -f $INPUT ] && rm -f $INPUT
+[ -f $OUTPUT ] && rm -f $OUTPUT
+
+CONFDIR=/etc/hostapd
+CONFFILE=hostapd.conf
+
+change_wifi_ssid() {
+	OLDSSID=`grep "^ssid=" $CONFDIR/$CONFFILE | awk -F "ssid=" '{print $2}'`
+	if dialog --colors --clear --title " Change WiFi SSID " --max-input $SSID_MAX_LEN --inputbox "Enter new SSID (Maximum of $SSID_MAX_LEN ASCII characters):" 8 60 $OLDSSID 2>$OUTPUT; then
+
+		NEWSSID=`cat $OUTPUT`
+		TRIMNEWSSID=`echo $NEWSSID | sed 's/[[:space:]]//g'`
+		if [ x"$TRIMNEWSSID" != x"" ]; then
+
+			if dialog --colors --clear --title " Confirm " --cr-wrap --yesno "\nChange new SSID to '$TRIMNEWSSID' ?" 7 59; then
+
+				if dialog --colors --clear --title " Reconfirm " --cr-wrap --no-collapse --yesno "\nAre you sure you want to change the SSID for '$TRIMNEWSSID' ?" 8 48; then
+					sed 's/^ssid='$OLDSSID'/ssid='$TRIMNEWSSID'/' $CONFDIR/$CONFFILE > /tmp/$CONFFILE
+
+					service hostapd stop
+					sleep 1
+
+					mv -f /tmp/$CONFFILE $CONFDIR/$CONFFILE
+					chown root.root $CONFDIR/$CONFFILE
+					chmod 644 $CONFDIR/$CONFFILE
+
+					service hostapd restart
+
+					dialog --colors --clear --title " Change WiFi SSID " --msgbox "\nChange WiFi SSID success." 7 50
+				fi
+			fi
+		else
+			dialog --colors --clear --colors --title "\Z1 Error " --msgbox "\nNew SSID is NULL" 7 50
+		fi
+	fi
+}
+
+change_wifi_password() {
+	OLDPWD=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F "wpa_passphrase=" '{print $2}'`
+	if dialog --colors --clear --title " Change WiFi Password " --max-input $WPAPASS_MAX_LEN --insecure --passwordbox "Enter new password (Must be $WPAPASS_MAX_LEN ASCII characters!):" 8 60 2>$OUTPUT; then
+
+		NEWPWD=`cat $OUTPUT`
+		TRIMNEWPWD=`echo $NEWPWD | sed 's/[[:space:]]//g'`
+		if [ x"$NEWPWD" == x"$TRIMNEWPWD" -a `expr length "$NEWPWD"` == 10 ]; then
+
+			if dialog --colors --clear --title " Change WiFi Password " --max-input 10 --insecure --passwordbox "Retype new password (Must be 10 ASCII characters!):" 8 60 2>$OUTPUT; then
+
+				REPWD=`cat $OUTPUT`
+				TRIMREPWD=`echo $REPWD | sed 's/[[:space:]]//g'`
+				if [ x"$REPWD" == x"$TRIMREPWD" -a `expr length "$REPWD"` == 10 ]; then
+
+					if [ x"$NEWPWD" == x"$REPWD" ]; then
+
+						if dialog --colors --clear --title " Confirm " --yesno "\nAre you sure you want to change the password ?" 8 65; then
+							sed 's/^wpa_passphrase='$OLDPWD'/wpa_passphrase='$NEWPWD'/' $CONFDIR/$CONFFILE > /tmp/$CONFFILE
+
+							service hostapd stop
+							sleep 1
+
+							mv -f /tmp/$CONFFILE $CONFDIR/$CONFFILE
+							chown root.root $CONFDIR/$CONFFILE
+							chmod 644 $CONFDIR/$CONFFILE
+
+							service hostapd restart
+
+							dialog --colors --clear --title " Change WiFi Password " --msgbox "\nChange password success." 7 50
+						fi
+					else
+						dialog --colors --clear --title "\Z1 Error \Zn" --msgbox "\nSorry, passwords do not match!" 7 50
+					fi
+				else
+					dialog --colors --clear --title "\Z1 Error \Zn" --msgbox "\nPassword length is not equal to 10!" 7 50
+				fi
+			fi
+		else
+			dialog --colors --clear --title "\Z1 Error \Zn" --msgbox "\nPassword length is not equal to 10!" 7 50
+		fi
+	fi
+}
+
+#=== Sub Menu ===#
+# Color
+# \Z 正常底色,字色 0=深灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=黑底, 白字
+# \Zr\Z 灰字, 底色 0=灰, 1=紅, 2=綠, 3=黃, 4=藍, 5=紫, 6=亮藍, 7=白底, 黑字
+# Bold is set by 'b', reset by 'B'. Reverse is set by 'r', reset by 'R'. Underline is set by 'u', reset by 'U'.
+# Restore normal settings with "\Zn"
+
+#BackTitle="\Z7AiGO $AIGO_VER\Zn - $BNAME v$VER"
+BackTitle="\Z7AiGO $AIGO_VER\Zn - aigo-tools-classic ver: $VER"
+
+MenuTitle="\Zr\Z7 AiGO Software Configuration Tool (aigo_config) \Zn"
+
+MenuHeight=25
+MenuWidth=100
+MenuItemHeight=10
+
+CURRENT_SSID="Undefined"
+Menu01Tag="1 Change WiFi SSID"
+Menu01Item="\Zr\Z7$CURRENT_SSID\Zn"
+
+CURRENT_WPAPASS="Undefined"
+Menu02Tag="2 Change WiFi Password"
+Menu02Item="\Zr\Z7$CURRENT_WPAPASS\Zn"
+
+CURRENT_WANIP="Undefined"
+Menu03Tag="3 Change WiFi IP"
+Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn"
+
+Menu04Tag="4 Switch 2.4G or 5G"
+Menu04Item="2.4G: 2.4GHz ~ 2.5GHz , 5G: 4.9GHz ~ 5.9GHz \Z1(Coming Soon)\Zn"
+
+Menu05Tag="5"
+
+Menu00Tag="0 Back"
+Menu00Item="Back to main menu."
+
+while true
+do
+
+CURRENT_SSID=`grep "^ssid=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}'`
+CURRENT_WPAPASS=`grep "^wpa_passphrase=" /etc/hostapd/hostapd.conf | awk -F '=' '{print $2}' | cut -c 1-3`"**"
+#CURRENT_WANIP=`ifconfig wlan0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+#CURRENT_LANIP=`ifconfig eth0 | grep "inet addr" | awk '{print $2}' | awk -F ':' '{print $2}'`
+# for Ubuntu 20.04
+CURRENT_WANIP=`ifconfig wlan0 | grep "inet " | awk '{print $2}'`
+CURRENT_LANIP=`ifconfig eth0 | grep "inet " | awk '{print $2}'`
+
+MenuText="\
+WiFi SSID     : \Z4$CURRENT_SSID\Zn\n\
+WiFi IP       : \Z4$CURRENT_WANIP\Zn\n\
+WiFi Password : \Z4$CURRENT_WPAPASS\Zn\n\
+LAN IP        : \Z4$CURRENT_LANIP\Zn\n\
+\nYou can use the UP/DOWN arrow keys, the number keys 0-9 to choose an option.\n\
+\nChoose the item"
+
+Menu01Item="\Zr\Z7$CURRENT_SSID\Zn"
+Menu02Item="\Zr\Z7$CURRENT_WPAPASS\Zn"
+Menu03Item="\Zr\Z7$CURRENT_WANIP\Zn \Z1(Coming Soon)\Zn"
+
+dialog --no-shadow --visit-items --colors --clear \
+--default-item "0 Back" \
+--cancel-label "Back" \
+--backtitle "$BackTitle" \
+--title "$MenuTitle" \
+--menu "$MenuText" \
+$MenuHeight $MenuWidth $MenuItemHeight \
+"$Menu01Tag" "$Menu01Item" \
+"$Menu02Tag" "$Menu02Item" \
+"$Menu03Tag" "$Menu03Item" \
+"$Menu00Tag" "$Menu05Item" \
+2>"${INPUT}"
+
+menuitem=$(<"${INPUT}")
+
+case $menuitem in
+        "$Menu01Tag")
+                change_wifi_ssid
+                ;;
+        "$Menu02Tag")
+                change_wifi_password
+                ;;
+        "$Menu03Tag")
+                # TODO: change_wifi_ip
+                ;;
+        "$Menu04Tag")
+                ;;
+        "$Menu00Tag")
+                clear
+                echo "Back to main menu."
+                break
+                ;;
+        *)
+                clear
+                echo "Back to main menu."
+                break
+                ;;
+esac
+
+done
+
+[ -f $OUTPUT ] && rm -f $OUTPUT
+[ -f $INPUT ] && rm -f $INPUT
+
+#clear

@@ -1,0 +1,8 @@
+* 2022-06-12 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.2.0-0.91
+- change reinstall aigo-tools to aigo-tools-classic
+- remove Menu 7 8
+- modify aigo_config_wifi-options for Ubuntu 20.04
+
+* 2022-04-07 Cheng-Chang Ho <earlybird.astro@gmail.com> 0.2.0-0.90
+- branch aigo-tools-classic 
+- base on aigo-tools 0.1.98-0.91

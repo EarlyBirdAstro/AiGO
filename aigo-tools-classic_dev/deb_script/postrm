@@ -1,0 +1,29 @@
+#!/bin/sh
+
+type=$1
+echo "postrm="$type
+
+AIGO_USER=aigo
+LXPANEL_CONF_DIR=$AIGO_HOME/.config/lxpanel/LXDE/panels
+LXPANEL_CONF=panel
+
+if [ x"$type" = x"remove" ] ; then
+	# Remove aigo_config from LXPanel
+	grep "aigo_config.desktop" $LXPANEL_CONF_DIR/$LXPANEL_CONF
+	RET=$?
+	if [ $RET -eq 0 ] ; then
+		cp -f $LXPANEL_CONF_DIR/$LXPANEL_CONF $AIGO_HOME/$LXPANEL_CONF.postrm.bak
+		sed -i -z 's/    Button {\n      id=menu:\/\/applications\/System\/aigo_config.desktop\n    }\n//' $LXPANEL_CONF_DIR/$LXPANEL_CONF
+
+	fi
+
+	# Restart LXPanel
+	sleep 0.25
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl exit'
+	sleep 0.25
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanel --profile LXDE &'
+	sleep 0.25
+	su $AIGO_USER -c 'DISPLAY=:0 lxpanelctl restart'
+fi
+
+exit 0
